@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IS-TRAINING · 我的訓練系統</title>
+<style>
+  :root{
+    --bg:#0e1116; --card:#171c24; --card2:#1f2630; --line:#2a323d;
+    --txt:#e7edf3; --mut:#8a97a6; --acc:#19c37d; --warn:#f0a020; --bad:#ef5350; --good:#19c37d;
+    --blue:#3b82f6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"PingFang HK","Helvetica Neue",sans-serif;
+    background:var(--bg);color:var(--txt);-webkit-tap-highlight-color:transparent}
+  header{padding:18px 16px 8px;position:sticky;top:0;background:linear-gradient(var(--bg),rgba(14,17,22,.92));z-index:5}
+  h1{font-size:18px;margin:0;letter-spacing:.5px}
+  h1 span{color:var(--acc)}
+  .sub{color:var(--mut);font-size:12px;margin-top:3px}
+  nav{display:flex;gap:4px;overflow-x:auto;padding:8px 12px 0;position:sticky;top:0}
+  nav button{flex:0 0 auto;background:none;border:none;color:var(--mut);font-size:14px;
+    padding:8px 12px;border-radius:10px 10px 0 0;cursor:pointer;font-weight:600}
+  nav button.active{color:var(--txt);background:var(--card)}
+  main{padding:14px 14px 90px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+  .card h2{font-size:15px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  .muted{color:var(--mut);font-size:13px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .pill{border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700}
+  .pill.go{background:rgba(25,195,125,.15);color:var(--good)}
+  .pill.cut{background:rgba(240,160,32,.15);color:var(--warn)}
+  .pill.rest{background:rgba(239,83,80,.15);color:var(--bad)}
+  label{display:block;font-size:12px;color:var(--mut);margin:10px 0 4px}
+  input,select,textarea{width:100%;background:var(--card2);border:1px solid var(--line);
+    color:var(--txt);border-radius:10px;padding:10px;font-size:15px;font-family:inherit}
+  textarea{min-height:64px;resize:vertical}
+  button.act{background:var(--acc);color:#04150d;border:none;border-radius:10px;padding:12px 16px;
+    font-size:15px;font-weight:700;cursor:pointer;width:100%}
+  button.ghost{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .metric{background:var(--card2);border-radius:12px;padding:12px;text-align:center}
+  .metric .v{font-size:22px;font-weight:800}
+  .metric .l{font-size:11px;color:var(--mut);margin-top:2px}
+  .big{font-size:30px;font-weight:800;letter-spacing:.5px}
+  .phase{border-left:3px solid var(--line);padding:4px 0 4px 12px;margin:8px 0}
+  .phase.cur{border-color:var(--acc)}
+  .phase b{font-size:14px}
+  .ex{padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .ex:last-child{border:none}
+  .tag{font-size:10px;padding:2px 6px;border-radius:6px;background:var(--card2);color:var(--warn);margin-left:6px}
+  .coach{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .coach:last-child{border:none}
+  .coach .ico{font-size:22px}
+  .coach .msg{font-size:14px;line-height:1.5}
+  .coach .who{font-size:12px;color:var(--mut);font-weight:700;margin-bottom:2px}
+  .logitem{font-size:13px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .spark{display:flex;align-items:flex-end;gap:3px;height:46px;margin-top:6px}
+  .spark span{flex:1;background:var(--blue);border-radius:2px 2px 0 0;min-height:2px;opacity:.85}
+  .hint{font-size:11px;color:var(--mut);margin-top:6px}
+  .warnbox{background:rgba(240,160,32,.1);border:1px solid rgba(240,160,32,.3);border-radius:10px;padding:10px;font-size:13px;margin-top:8px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>IS·<span>TRAINING</span></h1>
+  <div class="sub" id="subhead">個人訓練系統</div>
+</header>
+<nav id="nav"></nav>
+<main id="main"></main>
+
+<script>
+// ============ 計劃資料 ============
+// ⚠️ 公開 repo 只放呢個「中性殼」預設。你嘅個人計劃喺本地 data/plan.json（gitignored），
+//    app 啟動時自動讀本地檔或你匯入嘅 plan.json 覆蓋呢個預設 —— 個人資料永不上 GitHub。
+const DEFAULT_PLAN = {
+  goal:"個人訓練系統",
+  blocks:[], week:[], b1_d2:[], b1_d4:[], coachStatic:[],
+  empty:true,
+};
+let PLAN = DEFAULT_PLAN;
+async function loadPlan(){
+  let p = load('is_plan', null);                         // 匯入過嘅本地計劃（localStorage）
+  if(!p){ try{const r=await fetch('./data/plan.json'); if(r.ok){p=await r.json(); save('is_plan',p)}}catch(e){} }
+  PLAN = p || DEFAULT_PLAN;
+  PLAN.startDate = localStorage.getItem('is_start') || todayISO();
+}
+
+// ============ 工具 ============
+function todayISO(){return new Date().toISOString().slice(0,10)}
+function load(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}}
+function save(k,v){localStorage.setItem(k,JSON.stringify(v))}
+function curWeek(){
+  const d0=new Date(PLAN.startDate), now=new Date(todayISO());
+  const wk=Math.floor((now-d0)/(7*864e5))+1;
+  return Math.min(Math.max(wk,1),12);
+}
+function curBlock(){const w=curWeek();return w<=4?0:w<=8?1:w<=11?2:3}
+
+// ============ Readiness 引擎（PLAN 第5節規則） ============
+function readiness(g){
+  // g: {hrv, hrv7, sleep, bb, hamstring} 缺值就忽略嗰條
+  let status="go", reasons=[], rec=[];
+  if(g.hamstring==="pain"){status="rest";reasons.push("有痛症");rec.push("跳過跑步/衝刺，只做復健 + 非患處")}
+  if(g.bb!=null && g.bb<40){if(status!=="rest")status="cut";reasons.push("Body Battery 起床 <40");rec.push("總量減 30%")}
+  if(g.sleep!=null && g.sleep<6){if(status!=="rest")status="cut";reasons.push("睡眠 <6 小時");rec.push("強度課改 Zone 2 恢復")}
+  if(g.hrv!=null && g.hrv7!=null && g.hrv < g.hrv7*0.85){if(status!=="rest")status="cut";reasons.push("HRV 低於 7 日均值 15%+");rec.push("強度課改 Zone 2 恢復")}
+  if(status==="go"){rec.push("照計劃進行")}
+  return {status,reasons,rec};
+}
+
+// ============ Garmin 匯入 ============
+async function tryFetchGarmin(){
+  // app 同 garmin data 同 folder 時可自動讀；否則靠手動匯入
+  try{const r=await fetch('./data/garmin_latest.json');if(r.ok){const j=await r.json();save('is_garmin',j);return j}}catch(e){}
+  return load('is_garmin',null);
+}
+async function tryFetchDaily(){
+  try{const r=await fetch('./data/daily_summary.csv');if(r.ok){const rows=parseGarminCSV(await r.text());save('is_daily',rows);return rows}}catch(e){}
+  return load('is_daily',[]);
+}
+function parseGarminCSV(text){
+  const lines=text.trim().split(/\r?\n/);const head=lines[0].split(',');
+  return lines.slice(1).map(l=>{const c=l.split(',');const o={};head.forEach((h,i)=>o[h.trim()]=c[i]);return o});
+}
+function lastGood(rows){
+  // 最近一日有實際數據（今日通常未 sync 完，會係空）
+  for(let i=rows.length-1;i>=0;i--){const r=rows[i];if(r&&r.resting_hr&&r.resting_hr!=='')return r}
+  return null;
+}
+function hrv7avg(rows){
+  const v=rows.map(r=>parseFloat(r.hrv_overnight)).filter(x=>!isNaN(x)).slice(-7);
+  return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;
+}
+
+// ============ Views ============
+const TABS=[["today","今日"],["plan","計劃"],["log","打卡"],["data","數據"],["coach","教練團"]];
+let tab="today";
+function render(){
+  document.getElementById('subhead').textContent=PLAN.goal||'個人訓練系統';
+  document.getElementById('nav').innerHTML=TABS.map(([k,n])=>
+    `<button class="${k===tab?'active':''}" onclick="go('${k}')">${n}</button>`).join('');
+  document.getElementById('main').innerHTML=VIEWS[tab]();
+  if(tab==='today')initToday();
+  if(tab==='data')initData();
+}
+function go(t){tab=t;render();window.scrollTo(0,0)}
+function importPrompt(){
+  return `<div class="card">
+    <h2>📥 載入你的計劃</h2>
+    <div class="muted">公開版唔含個人資料。匯入你本機嘅 <b>plan.json</b> 即可啟用全部功能（只存呢部裝置）。</div>
+    <label>匯入 plan.json</label><input type="file" accept=".json" onchange="impPlan(this)">
+    <div id="planMsg" style="margin-top:10px"></div>
+  </div>`;
+}
+function impPlan(inp){const f=inp.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=e=>{try{const p=JSON.parse(e.target.result);save('is_plan',p);PLAN=p;PLAN.startDate=localStorage.getItem('is_start')||todayISO();render();}
+    catch(x){const m=document.getElementById('planMsg');if(m)m.innerHTML='<div class="pill rest">❌ 格式錯誤</div>'}};rd.readAsText(f)}
+
+const VIEWS={
+  today(){
+    if(PLAN.empty) return importPrompt();
+    const b=PLAN.blocks[curBlock()];
+    return `
+    <div class="card">
+      <div class="muted">第 ${curWeek()} 週 · ${b.wk}</div>
+      <div class="big">${b.name}</div>
+      <div class="muted" style="margin-top:6px">${b.focus}</div>
+    </div>
+    <div class="card">
+      <h2>🟢 今日 Readiness</h2>
+      <div class="muted">由 Garmin 自動讀，或手動填。缺值會自動忽略。</div>
+      <div class="grid2" style="margin-top:10px">
+        <div><label>HRV（隔夜 ms）</label><input id="r_hrv" type="number" inputmode="decimal" placeholder="自動/手動"></div>
+        <div><label>7日均 HRV</label><input id="r_hrv7" type="number" inputmode="decimal" placeholder="自動"></div>
+        <div><label>睡眠（小時）</label><input id="r_sleep" type="number" inputmode="decimal" step="0.1"></div>
+        <div><label>Body Battery 起床</label><input id="r_bb" type="number" inputmode="numeric"></div>
+      </div>
+      <label>傷患 / 痛症狀態</label>
+      <select id="r_ham"><option value="ok">正常無痛</option><option value="tight">繃緊</option><option value="pain">有痛感</option></select>
+      <div style="height:10px"></div>
+      <button class="act" onclick="calcReady()">計算今日建議</button>
+      <div id="readyOut" style="margin-top:12px"></div>
+    </div>
+    <div class="card">
+      <h2>📋 今週模板</h2>
+      ${PLAN.week.map(w=>`<div class="ex"><b>${w.d}</b> · ${w.loc}<br><span class="muted">${w.theme}</span><br><span class="hint">${w.role}</span></div>`).join('')}
+    </div>`;
+  },
+  plan(){
+    if(PLAN.empty) return importPrompt();
+    const cb=curBlock();
+    return `
+    <div class="card">
+      <h2>🎯 ${PLAN.goal}</h2>
+      <label>計劃開始日</label>
+      <input type="date" id="startd" value="${PLAN.startDate}" onchange="setStart(this.value)">
+      <div class="hint">第 ${curWeek()} 週 / 12 週</div>
+    </div>
+    <div class="card">
+      <h2>📆 12 週分期</h2>
+      ${PLAN.blocks.map((b,i)=>`<div class="phase ${i===cb?'cur':''}">
+        <b>${b.wk} · ${b.name}</b>${i===cb?' <span class="pill go">進行中</span>':''}
+        <div class="muted" style="margin-top:3px">${b.focus}</div>
+        <div class="hint">跑步：${b.run} ｜ 力量：${b.str}</div></div>`).join('')}
+    </div>
+    <div class="card">
+      <h2>🗓 每週模板</h2>
+      ${PLAN.week.map(w=>`<div class="ex"><b>${w.d}</b> · ${w.loc} — ${w.theme}<br><span class="hint">${w.role}</span></div>`).join('')}
+    </div>
+    <div class="card">
+      <h2>💪 Block 1 · ${PLAN.week[1]?PLAN.week[1].d:'D2'} 課表</h2>
+      ${(PLAN.b1_d2||[]).map(e=>`<div class="ex">${e.n}${e.t?`<span class="tag">⚠${e.t}</span>`:''}</div>`).join('')}
+    </div>
+    <div class="card">
+      <h2>🏃 Block 1 · ${PLAN.week[3]?PLAN.week[3].d:'D4'} 課表</h2>
+      ${(PLAN.b1_d4||[]).map(e=>`<div class="ex">${e.n}${e.t?`<span class="tag">⚠${e.t}</span>`:''}</div>`).join('')}
+    </div>
+    <div class="card muted">完整 12 週各 block 詳細課表喺本機 <b>docs/PLAN.md</b>。</div>`;
+  },
+  log(){
+    const logs=load('is_sessions',[]);
+    return `
+    <div class="card">
+      <h2>✍️ 今日打卡</h2>
+      <label>日期</label><input type="date" id="l_date" value="${todayISO()}">
+      <label>課題</label>
+      <select id="l_type">${(PLAN.week||[]).map(w=>`<option>${w.d} ${w.loc} · ${w.theme}</option>`).join('')}<option>跑步 Zone 2</option><option>跑步 質量/間歇</option><option>恢復/休息</option></select>
+      <div class="grid2">
+        <div><label>時長（分鐘）</label><input id="l_dur" type="number" inputmode="numeric"></div>
+        <div><label>RPE（1–10）</label><input id="l_rpe" type="number" inputmode="numeric" min="1" max="10"></div>
+      </div>
+      <label>身體狀態</label>
+      <select id="l_body"><option>都正常</option><option>部位繃緊</option><option>有痛感</option><option>頭痛</option><option>關節痛</option></select>
+      <label>備註</label><textarea id="l_note" placeholder="今日感受、重量、配速…"></textarea>
+      <div style="height:10px"></div>
+      <button class="act" onclick="addLog()">儲存打卡</button>
+    </div>
+    <div class="card">
+      <h2>📚 最近記錄（${logs.length}）</h2>
+      ${logs.slice(-15).reverse().map(l=>`<div class="logitem"><b>${l.date}</b> · ${l.type}
+        ${l.dur?` · ${l.dur}分`:''}${l.rpe?` · RPE ${l.rpe}`:''} · <span class="muted">${l.body}</span>
+        ${l.note?`<br><span class="muted">${l.note}</span>`:''}</div>`).join('')||'<div class="muted">未有記錄</div>'}
+    </div>`;
+  },
+  data(){
+    return `
+    <div class="card">
+      <h2>⌚ Garmin 數據</h2>
+      <div class="muted">先喺 terminal 跑 <b>garmin-sync</b>，再匯入 <b>garmin_latest.json</b> 同 <b>daily_summary.csv</b>。</div>
+      <label>匯入 garmin_latest.json</label><input type="file" id="f_latest" accept=".json" onchange="impLatest(this)">
+      <label>匯入 daily_summary.csv</label><input type="file" id="f_daily" accept=".csv" onchange="impDaily(this)">
+      <div id="garminOut" style="margin-top:12px"></div>
+    </div>
+    <div class="card">
+      <h2>📈 HRV 趨勢（近 14 日）</h2>
+      <div id="hrvSpark"><div class="muted">未有數據</div></div>
+    </div>
+    <div class="card">
+      <h2>😴 睡眠趨勢</h2>
+      <div id="sleepSpark"><div class="muted">未有數據</div></div>
+    </div>
+    <div class="card">
+      <h2>📋 計劃檔</h2>
+      <div class="muted">重新匯入／更新本機 plan.json（覆蓋現有計劃，只存呢部裝置）。</div>
+      <label>匯入 plan.json</label><input type="file" accept=".json" onchange="impPlan(this)">
+      <div id="planMsg"></div>
+    </div>`;
+  },
+  coach(){
+    if(PLAN.empty) return importPrompt();
+    const g=load('is_garmin',null), daily=load('is_daily',[]);
+    const lg=lastGood(daily)||{};
+    const r=readiness({
+      hrv: parseFloat(lg.hrv_overnight)||null,
+      hrv7: hrv7avg(daily),
+      sleep: parseFloat(lg.sleep_hours)||null,
+      bb: parseFloat(lg.body_battery_high)||null,
+      hamstring: load('is_lastham','ok'),
+    });
+    const team=[
+      ["📊","數據分析師", r.status==="go"?"恢復數據良好，可照計劃推進。":"恢復數據偏低 — "+r.reasons.join("、")+"。建議：" + r.rec.join("、")+"。"],
+      ["🏋️","S&C 教練", curBlock()===0?"Block 1：力量維持 70–80%、submaximal，重點係修復同有氧底，唔好谷大重量。":"力量回升期，按 RPE 加，零痛為界。"],
+      ...(PLAN.coachStatic||[]).map(c=>[c.ico,c.who,c.msg]),
+    ];
+    return `
+    <div class="card">
+      <h2>👥 AI 教練團 · 今日簡報</h2>
+      <div class="row" style="margin-bottom:8px">
+        <span class="pill ${r.status==='go'?'go':r.status==='cut'?'cut':'rest'}">
+          ${r.status==='go'?'✅ 照計劃':r.status==='cut'?'⚠️ 降強度':'🛑 改恢復'}</span>
+      </div>
+      ${team.map(c=>`<div class="coach"><div class="ico">${c[0]}</div><div><div class="who">${c[1]}</div><div class="msg">${c[2]}</div></div></div>`).join('')}
+      <div class="warnbox">💡 即時 AI 對話（直接傾計問教練團）將喺接駁 Claude API 後開放。而家簡報由規則 + 你嘅 Garmin 數據自動生成。</div>
+    </div>`;
+  },
+};
+
+// ============ 互動 ============
+function setStart(v){localStorage.setItem('is_start',v);PLAN.startDate=v;render()}
+function calcReady(){
+  const g={
+    hrv:val('r_hrv'), hrv7:val('r_hrv7'), sleep:val('r_sleep'), bb:val('r_bb'),
+    hamstring:document.getElementById('r_ham').value
+  };
+  localStorage.setItem('is_lastham',JSON.stringify(g.hamstring));
+  const r=readiness(g);
+  const cls=r.status==='go'?'go':r.status==='cut'?'cut':'rest';
+  const label=r.status==='go'?'✅ 照計劃進行':r.status==='cut'?'⚠️ 今日降強度':'🛑 今日改恢復';
+  document.getElementById('readyOut').innerHTML=
+    `<span class="pill ${cls}">${label}</span>
+     ${r.reasons.length?`<div class="muted" style="margin-top:8px">原因：${r.reasons.join("、")}</div>`:''}
+     <div style="margin-top:6px">建議：${r.rec.join("、")}</div>`;
+}
+function val(id){const v=document.getElementById(id).value;return v===''?null:parseFloat(v)}
+function addLog(){
+  const logs=load('is_sessions',[]);
+  logs.push({date:gv('l_date'),type:gv('l_type'),dur:gv('l_dur'),rpe:gv('l_rpe'),body:gv('l_body'),note:gv('l_note')});
+  save('is_sessions',logs);go('log');
+}
+function gv(id){return document.getElementById(id).value}
+
+async function initToday(){
+  const g=await tryFetchGarmin();const daily=await tryFetchDaily();
+  const lg=lastGood(daily);
+  if(lg){
+    if(lg.hrv_overnight)setIf('r_hrv',lg.hrv_overnight);
+    if(lg.sleep_hours)setIf('r_sleep',lg.sleep_hours);
+    if(lg.body_battery_high)setIf('r_bb',lg.body_battery_high);
+  }
+  const a=hrv7avg(daily);if(a)setIf('r_hrv7',a.toFixed(0));
+}
+function setIf(id,v){const el=document.getElementById(id);if(el&&!el.value)el.value=v}
+
+function impLatest(inp){const f=inp.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=e=>{try{save('is_garmin',JSON.parse(e.target.result));initData();flash('garminOut','✅ garmin_latest 已匯入')}catch(x){flash('garminOut','❌ 格式錯誤')}};rd.readAsText(f)}
+function impDaily(inp){const f=inp.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=e=>{save('is_daily',parseGarminCSV(e.target.result));initData();flash('garminOut','✅ daily_summary 已匯入')};rd.readAsText(f)}
+function flash(id,m){const el=document.getElementById(id);if(el)el.innerHTML=`<div class="pill go">${m}</div>`}
+
+async function initData(){
+  const g=await tryFetchGarmin(), daily=await tryFetchDaily();
+  const d=lastGood(daily)||{};
+  if(g||daily.length){
+    document.getElementById('garminOut').innerHTML=`<div class="grid2">
+      <div class="metric"><div class="v">${d.resting_hr||'–'}</div><div class="l">靜息心率</div></div>
+      <div class="metric"><div class="v">${d.hrv_overnight||'–'}</div><div class="l">HRV</div></div>
+      <div class="metric"><div class="v">${d.sleep_hours||'–'}</div><div class="l">睡眠(h)</div></div>
+      <div class="metric"><div class="v">${(g&&g.vo2max)||'–'}</div><div class="l">VO₂max</div></div></div>
+      <div class="hint">最新數據：${d.date||'–'} ｜ 最後拉取：${(g&&g.pulled_at)||'–'}</div>`;
+  }
+  if(daily.length){
+    spark('hrvSpark',daily.map(r=>parseFloat(r.hrv_overnight)).filter(x=>!isNaN(x)).slice(-14),'ms');
+    spark('sleepSpark',daily.map(r=>parseFloat(r.sleep_hours)).filter(x=>!isNaN(x)).slice(-14),'h');
+  }
+}
+function spark(id,arr,unit){const el=document.getElementById(id);if(!el)return;
+  if(!arr.length){el.innerHTML='<div class="muted">未有數據</div>';return}
+  const mx=Math.max(...arr),mn=Math.min(...arr);
+  el.innerHTML=`<div class="spark">${arr.map(v=>`<span style="height:${10+(mx===mn?50:(v-mn)/(mx-mn)*80)}%" title="${v}${unit}"></span>`).join('')}</div>
+    <div class="hint">最新 ${arr[arr.length-1]}${unit} ｜ 範圍 ${mn}–${mx}${unit}</div>`;
+}
+
+(async()=>{await loadPlan();render();})();
+</script>
+</body>
+</html>
