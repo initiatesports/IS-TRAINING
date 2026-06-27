@@ -455,9 +455,14 @@ function conceptCard(c){
     ${(c.tags||[]).length?`<div class="hint">標籤：${c.tags.join('、')}</div>`:''}</div>`;
 }
 function facultyMember(f){
-  return `<div class="coach"><div class="ico">${f.ico}</div><div>
+  const line=(label,v)=>v?`<div class="hint">${label}：${v}</div>`:'';
+  return `<div class="coach"><div class="ico">${f.ico}</div><div style="min-width:0">
     <div class="who">${f.name} <span class="hint">· ${f.base}</span></div>
-    <div class="msg">${f.teach}</div></div></div>`;
+    <div class="msg">${f.teach}</div>
+    ${line('📐 代表理論',f.theories)}
+    ${line('📚 權威來源',f.sources)}
+    ${line('⚠️ 常見錯誤',f.pitfalls)}
+  </div></div>`;
 }
 function facultyRoster(){
   const depts=KB.departments&&KB.departments.length?KB.departments:[...new Set(KB.faculty.map(f=>f.dept).filter(Boolean))];
@@ -487,6 +492,13 @@ function dailyInsight(){
   return pool[((day%pool.length)+pool.length)%pool.length];
 }
 function setRole(v){save('is_role',v)}
+function facultyDigest(){
+  const role=load('is_role','全部');
+  const map={'運動員':['運動科學','表現訓練','營養與恢復','治療與復康'],'教練':['教練與教育','表現訓練','運動科學','業務與品牌'],'治療師':['治療與復康','運動科學']};
+  const depts=map[role];
+  const list=(KB.faculty||[]).filter(f=>!depts||depts.some(d=>(f.dept||'').includes(d)));
+  return list.map(f=>`${f.name}「${f.sources||f.base}」`).join('；');
+}
 function chatContext(){
   const daily=load('is_daily',[]), lg=lastGood(daily)||{}, logs=load('is_sessions',[]).slice(-5);
   const r=readiness({hrv:parseFloat(lg.hrv_overnight)||null,hrv7:hrv7avg(daily),sleep:parseFloat(lg.sleep_hours)||null,bb:parseFloat(lg.body_battery_high)||null,hamstring:load('is_lastham','ok')});
@@ -498,6 +510,7 @@ function chatContext(){
     +(logs.length?`近期打卡：${logs.map(l=>l.date+' '+l.type+'('+(l.body||'')+')').join('；')}。`:'')
     +(creds?`我嘅專業進修：${creds}。`:'')
     +(recent?`近期概念卡：${recent}。`:'')
+    +(KB.faculty&&KB.faculty.length?`可調用嘅專家及其權威來源（回答時引用對應專家同來源）：${facultyDigest()}。`:'')
     +(PLAN.bgContext?`身體背景（回答時顧及）：${PLAN.bgContext}`:'');
 }
 async function sendChat(){
