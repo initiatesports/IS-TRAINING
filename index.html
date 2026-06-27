@@ -383,8 +383,8 @@ const VIEWS={
       <h2>🔬 個案研討室</h2>
       <div class="muted">貼一個個案（客戶 / 病人 / 學員 / 自己），相關部門專家會診，畀你結構化多角度分析。需設定後端 + CLAUDE_API_KEY。</div>
       <label>個案類型</label>
-      <select id="cs_type"><option>客戶（訓練）</option><option>病人（治療）</option><option>學員（教學）</option><option>跳繩班個案</option><option>自己</option></select>
-      <label>個案描述</label><textarea id="cs_desc" placeholder="例如：10歲跳繩班學員，連續單搖無問題但學唔到交叉，落地好重；或 42歲客戶久坐、深蹲膝內扣+腰痠…"></textarea>
+      <select id="cs_type"><option>客戶（訓練）</option><option>病人（治療）</option><option>學員（教學）</option><option>自己</option></select>
+      <label>個案描述</label><textarea id="cs_desc" placeholder="例如：10歲學員學唔到某動作、落地好重；或 42歲客戶久坐、深蹲膝內扣+腰痠…"></textarea>
       <div style="height:8px"></div><button class="act" onclick="consult()">召開會診</button>
       <div id="csOut" style="margin-top:12px"></div>
     </div>
