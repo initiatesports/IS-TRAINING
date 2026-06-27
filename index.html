@@ -168,7 +168,7 @@ function hrv7avg(rows){
 }
 
 // ============ Views ============
-const TABS=[["today","今日"],["plan","訓練"],["knowledge","知識"],["coachTools","教練"],["therapy","治療"],["faculty","導師團"],["log","打卡"],["data","數據"]];
+const TABS=[["today","今日"],["plan","訓練"],["knowledge","知識"],["coachTools","教練"],["therapy","治療"],["faculty","導師團"],["clinic","研討室"],["log","打卡"],["data","數據"]];
 let tab="today";
 function render(){
   document.getElementById('subhead').textContent=PLAN.goal||'個人訓練系統';
@@ -375,6 +375,24 @@ const VIEWS={
       ${selfCases.map(c=>conceptCard(c)).join('')||'<div class="muted">未有自身案例</div>'}
     </div>`;
   },
+  // ===== 個案研討室 =====
+  clinic(){
+    const cases=load('is_clinic',[]);
+    return `
+    <div class="card">
+      <h2>🔬 個案研討室</h2>
+      <div class="muted">貼一個個案（客戶 / 病人 / 學員 / 自己），相關部門專家會診，畀你結構化多角度分析。需設定後端 + CLAUDE_API_KEY。</div>
+      <label>個案類型</label>
+      <select id="cs_type"><option>客戶（訓練）</option><option>病人（治療）</option><option>學員（教學）</option><option>跳繩班個案</option><option>自己</option></select>
+      <label>個案描述</label><textarea id="cs_desc" placeholder="例如：10歲跳繩班學員，連續單搖無問題但學唔到交叉，落地好重；或 42歲客戶久坐、深蹲膝內扣+腰痠…"></textarea>
+      <div style="height:8px"></div><button class="act" onclick="consult()">召開會診</button>
+      <div id="csOut" style="margin-top:12px"></div>
+    </div>
+    <div class="card">
+      <h2>📁 過往會診（${cases.length}）</h2>
+      ${cases.slice(-10).reverse().map(c=>`<div class="logitem"><b>${c.date} · ${c.type}</b><br><span class="muted">${c.desc}</span><br>${(c.reply||'').replace(/</g,'&lt;').replace(/\n/g,'<br>')}</div>`).join('')||'<div class="muted">未有會診記錄</div>'}
+    </div>`;
+  },
   // ===== 導師團（AI faculty）=====
   faculty(){
     if(PLAN.empty && !KB.credentials.length) return importPrompt();
@@ -462,6 +480,7 @@ function facultyMember(f){
     ${line('📐 代表理論',f.theories)}
     ${line('📚 權威來源',f.sources)}
     ${line('⚠️ 常見錯誤',f.pitfalls)}
+    ${line('📛 關鍵爭議',f.debate)}
   </div></div>`;
 }
 function facultyRoster(){
@@ -492,6 +511,21 @@ function dailyInsight(){
   return pool[((day%pool.length)+pool.length)%pool.length];
 }
 function setRole(v){save('is_role',v)}
+function fullFacultyDigest(){return (KB.faculty||[]).map(f=>`${f.name}「${f.sources||f.base}」`).join('；')}
+async function consult(){
+  const type=gv('cs_type'), desc=gv('cs_desc').trim();
+  if(!desc)return;
+  const out=document.getElementById('csOut');if(out)out.innerHTML='<div class="muted">專家會診中…（多角度分析需時）</div>';
+  const sys=`你係 IS 專業導師團嘅「個案研討室」主持。根據個案，召集相關部門專家會診，畀結構化多角度分析。`
+    +`格式：①各相關專家觀點（標明專家身份，引用佢嘅權威來源/理論）②綜合建議（具體可行動）③風險 / 紅旗 / 需否轉介就醫 ④仲需要收集嘅資料。`
+    +`用繁體中文（香港）、精簡專業、分點。可調用嘅專家及權威來源：${fullFacultyDigest()}。`
+    +`個案主人嘅專業背景：${(KB.credentials||[]).filter(c=>c.status==='done').map(c=>c.name).join('、')}。個案類型：${type}。`;
+  try{
+    const j=await backendPost('chat',{messages:[{role:'user',content:'個案：'+desc}],system:sys});
+    if(j.ok){const cases=load('is_clinic',[]);cases.push({date:todayISO(),type,desc,reply:j.reply});save('is_clinic',cases);go('clinic');}
+    else if(out)out.innerHTML=`<div class="pill rest">❌ ${j.error||'失敗'}（檢查後端 + CLAUDE_API_KEY 設定）</div>`;
+  }catch(e){if(out)out.innerHTML=`<div class="pill rest">❌ ${e.message}</div>`}
+}
 function facultyDigest(){
   const role=load('is_role','全部');
   const map={'運動員':['運動科學','表現訓練','營養與恢復','治療與復康'],'教練':['教練與教育','表現訓練','運動科學','業務與品牌'],'治療師':['治療與復康','運動科學']};
