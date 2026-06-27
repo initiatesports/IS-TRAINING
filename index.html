@@ -403,13 +403,7 @@ const VIEWS={
       </div>
       ${team.map(c=>`<div class="coach"><div class="ico">${c[0]}</div><div><div class="who">${c[1]}</div><div class="msg">${c[2]}</div></div></div>`).join('')}
     </div>
-    ${(KB.faculty&&KB.faculty.length)?`<div class="card">
-      <h2>🏛 你嘅專業團隊（${KB.faculty.length} 位）</h2>
-      <div class="muted" style="margin-bottom:6px">每位對應你真實學過嘅學科，傾計時會用對應專業教你。</div>
-      ${KB.faculty.map(f=>`<div class="coach"><div class="ico">${f.ico}</div><div>
-        <div class="who">${f.name} <span class="hint">· ${f.base}</span></div>
-        <div class="msg">${f.teach}</div></div></div>`).join('')}
-    </div>`:''}
+    ${(KB.faculty&&KB.faculty.length)?facultyRoster():''}
     <div class="card">
       <h2>💬 同導師團傾計</h2>
       <div class="muted">揀身份，導師團會用對應專業同你嘅進修背景嚟教 + 答（需設定後端 + CLAUDE_API_KEY）。</div>
@@ -459,6 +453,25 @@ function conceptCard(c){
     <div class="msg">${c.body}</div>
     ${links.length?`<div class="hint">🔗 連結：${links.join('、')}</div>`:''}
     ${(c.tags||[]).length?`<div class="hint">標籤：${c.tags.join('、')}</div>`:''}</div>`;
+}
+function facultyMember(f){
+  return `<div class="coach"><div class="ico">${f.ico}</div><div>
+    <div class="who">${f.name} <span class="hint">· ${f.base}</span></div>
+    <div class="msg">${f.teach}</div></div></div>`;
+}
+function facultyRoster(){
+  const depts=KB.departments&&KB.departments.length?KB.departments:[...new Set(KB.faculty.map(f=>f.dept).filter(Boolean))];
+  const head=`<div class="card">
+    <h2>🏛 你嘅專業團隊（${KB.faculty.length} 位 · ${depts.length} 部門）</h2>
+    <div class="muted">每位對應你真實學過嘅學科，傾計時揀身份就會用對應專業教你。</div></div>`;
+  if(!depts.length) return head + `<div class="card">${KB.faculty.map(facultyMember).join('')}</div>`;
+  const groups=depts.map(d=>{
+    const m=KB.faculty.filter(f=>f.dept===d);
+    if(!m.length)return '';
+    return `<div class="card"><h2 style="font-size:13px;color:var(--acc)">${d}（${m.length}）</h2>${m.map(facultyMember).join('')}</div>`;
+  }).join('');
+  const noDept=KB.faculty.filter(f=>!depts.includes(f.dept));
+  return head + groups + (noDept.length?`<div class="card"><h2 style="font-size:13px;color:var(--acc)">其他</h2>${noDept.map(facultyMember).join('')}</div>`:'');
 }
 function toggleAddConcept(){const el=document.getElementById('addConcept');if(el)el.classList.toggle('hidden')}
 function addConcept(){
