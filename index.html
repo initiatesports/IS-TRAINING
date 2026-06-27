@@ -86,6 +86,15 @@ async function loadPlan(){
   PLAN.startDate = localStorage.getItem('is_start') || todayISO();
 }
 
+// ============ 知識庫（CPD / 概念 / 參考框架）============
+let KB = {owner:{}, credentials:[], reference:[], concepts:[], insights_pool:[]};
+async function loadKnowledge(){
+  let k = load('is_kb', null);
+  if(!k){ try{const r=await fetch('./data/knowledge.json'); if(r.ok){k=await r.json(); save('is_kb',k)}}catch(e){} }
+  if(k) KB = Object.assign({owner:{},credentials:[],reference:[],concepts:[],insights_pool:[]}, k);
+}
+function saveKB(){ save('is_kb',KB); if(backendCfg().url){backendPost('put',{key:'knowledge',value:KB}).catch(()=>{})} }
+
 // ============ 工具 ============
 function todayISO(){return new Date().toISOString().slice(0,10)}
 function load(k,d){try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}}
@@ -138,6 +147,7 @@ async function cloudPull(){
       if(j.store.plan){save('is_plan',j.store.plan);PLAN=j.store.plan;PLAN.startDate=localStorage.getItem('is_start')||todayISO();}
       if(j.store.garmin_latest)save('is_garmin',j.store.garmin_latest);
       if(j.store.daily_summary)save('is_daily',j.store.daily_summary);
+      if(j.store.knowledge){save('is_kb',j.store.knowledge);KB=Object.assign(KB,j.store.knowledge);}
     }
     if(j.sessions)save('is_sessions',j.sessions);
   }
@@ -158,7 +168,7 @@ function hrv7avg(rows){
 }
 
 // ============ Views ============
-const TABS=[["today","今日"],["plan","計劃"],["log","打卡"],["data","數據"],["coach","教練團"]];
+const TABS=[["today","今日"],["plan","訓練"],["knowledge","知識"],["coachTools","教練"],["therapy","治療"],["faculty","導師團"],["log","打卡"],["data","數據"]];
 let tab="today";
 function render(){
   document.getElementById('subhead').textContent=PLAN.goal||'個人訓練系統';
@@ -209,6 +219,11 @@ const VIEWS={
     <div class="card">
       <h2>📋 今週模板</h2>
       ${PLAN.week.map(w=>`<div class="ex"><b>${w.d}</b> · ${w.loc}<br><span class="muted">${w.theme}</span><br><span class="hint">${w.role}</span></div>`).join('')}
+    </div>
+    <div class="card">
+      <h2>🎓 今日一課</h2>
+      <div class="msg" style="border-left:3px solid var(--acc);padding-left:10px">${dailyInsight()}</div>
+      <div class="hint" style="margin-top:6px">想深入？去「導師團」傾。</div>
     </div>`;
   },
   plan(){
@@ -301,36 +316,102 @@ const VIEWS={
       <div id="planMsg"></div>
     </div>`;
   },
-  coach(){
-    if(PLAN.empty) return importPrompt();
+  // ===== 知識庫 =====
+  knowledge(){
+    const done=KB.credentials.filter(c=>c.status==='done'), plan=KB.credentials.filter(c=>c.status!=='done');
+    const byDomain=d=>KB.concepts.filter(c=>!d||c.domain===d);
+    return `
+    <div class="card">
+      <h2>🎓 進修記錄 (CPD)</h2>
+      <div class="muted" style="margin-bottom:6px">已完成 ${done.length} ｜ 計劃中 ${plan.length}</div>
+      ${KB.credentials.map(c=>`<div class="ex">
+        <b>${c.name}</b> <span class="pill ${c.status==='done'?'go':'cut'}" style="font-size:10px">${c.status==='done'?'已完成':('計劃'+(c.when?' '+c.when:''))}</span>
+        <br><span class="hint">${c.provider} · ${c.domain} · ${c.key||''}</span></div>`).join('')||'<div class="muted">未有記錄</div>'}
+    </div>
+    <div class="card">
+      <h2>🧠 概念卡（跨學科連結）</h2>
+      <div class="muted">系統幫你把學過嘅嘢拆成概念、互相連結。撳「+」加你自己嘅筆記。</div>
+      ${KB.concepts.map(c=>conceptCard(c)).join('')||'<div class="muted">未有概念卡</div>'}
+      <div style="height:10px"></div>
+      <button class="act ghost" onclick="toggleAddConcept()">＋ 加概念卡</button>
+      <div id="addConcept" class="hidden" style="margin-top:10px">
+        <label>標題</label><input id="kc_title">
+        <label>學科</label><select id="kc_domain"><option>教練</option><option>治療師</option><option>運動員</option><option>跨學科</option><option>自身案例</option></select>
+        <label>內容 / 筆記</label><textarea id="kc_body"></textarea>
+        <label>標籤（逗號分隔）</label><input id="kc_tags" placeholder="例如：代償, 呼吸">
+        <div style="height:8px"></div><button class="act" onclick="addConcept()">儲存概念卡</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>📖 參考框架</h2>
+      ${KB.reference.map(r=>`<div class="ex"><b>${r.title}</b> <span class="hint">${r.domain}</span><br><span class="muted">${r.body}</span></div>`).join('')}
+    </div>`;
+  },
+  // ===== 教練（PT 工具）=====
+  coachTools(){
+    const ref=KB.reference.filter(r=>/教練/.test(r.domain));
+    return `
+    <div class="card">
+      <h2>🏋️ 教練工具</h2>
+      <div class="muted">你嘅 PT 工作參考 —— 由你嘅進修框架整合（去「知識」加你自己嘅內容）。</div>
+    </div>
+    ${ref.length?ref.map(r=>`<div class="card"><h2>${r.title}</h2><div class="msg">${r.body}</div>
+      <div class="hint">標籤：${(r.tags||[]).join('、')}</div></div>`).join(''):'<div class="card muted">未有教練類參考框架。喺「知識」加入或由雲端同步。</div>'}
+    <div class="card muted">💡 想幫客戶出 program？去「導師團」揀「教練」身份，描述客戶情況，導師團會用你嘅框架幫你出。</div>`;
+  },
+  // ===== 治療（徒手/軟組織）=====
+  therapy(){
+    const ref=KB.reference.filter(r=>/治療/.test(r.domain));
+    const selfCases=KB.concepts.filter(c=>c.domain==='自身案例'||(c.tags||[]).includes('自身案例'));
+    return `
+    <div class="card">
+      <h2>🩹 治療工具</h2>
+      <div class="muted">由你嘅徒手/軟組織治療進修框架整合（去「知識」加你自己嘅內容）。</div>
+    </div>
+    ${ref.length?ref.map(r=>`<div class="card"><h2>${r.title}</h2><div class="msg">${r.body}</div>
+      <div class="hint">標籤：${(r.tags||[]).join('、')}</div></div>`).join(''):'<div class="card muted">未有治療類參考框架。喺「知識」加入或由雲端同步。</div>'}
+    <div class="card">
+      <h2>🔗 自身案例（學以致用）</h2>
+      ${selfCases.map(c=>conceptCard(c)).join('')||'<div class="muted">未有自身案例</div>'}
+    </div>`;
+  },
+  // ===== 導師團（AI faculty）=====
+  faculty(){
+    if(PLAN.empty && !KB.credentials.length) return importPrompt();
     const g=load('is_garmin',null), daily=load('is_daily',[]);
     const lg=lastGood(daily)||{};
     const r=readiness({
-      hrv: parseFloat(lg.hrv_overnight)||null,
-      hrv7: hrv7avg(daily),
-      sleep: parseFloat(lg.sleep_hours)||null,
-      bb: parseFloat(lg.body_battery_high)||null,
+      hrv: parseFloat(lg.hrv_overnight)||null, hrv7: hrv7avg(daily),
+      sleep: parseFloat(lg.sleep_hours)||null, bb: parseFloat(lg.body_battery_high)||null,
       hamstring: load('is_lastham','ok'),
     });
     const team=[
       ["📊","數據分析師", r.status==="go"?"恢復數據良好，可照計劃推進。":"恢復數據偏低 — "+r.reasons.join("、")+"。建議：" + r.rec.join("、")+"。"],
-      ["🏋️","S&C 教練", curBlock()===0?"Block 1：力量維持 70–80%、submaximal，重點係修復同有氧底，唔好谷大重量。":"力量回升期，按 RPE 加，零痛為界。"],
+      ["🏋️","S&C 教練（你導師）", curBlock()===0?"今階段力量維持 70–80%、submaximal。教學重點：用 OPT Phase1 角度睇自己 —— 穩定先於負荷。":"力量回升期，按 RPE 加，零痛為界。"],
       ...(PLAN.coachStatic||[]).map(c=>[c.ico,c.who,c.msg]),
     ];
+    const role=load('is_role','全部');
     return `
     <div class="card">
-      <h2>👥 AI 教練團 · 今日簡報</h2>
-      <div class="row" style="margin-bottom:8px">
-        <span class="pill ${r.status==='go'?'go':r.status==='cut'?'cut':'rest'}">
-          ${r.status==='go'?'✅ 照計劃':r.status==='cut'?'⚠️ 降強度':'🛑 改恢復'}</span>
-      </div>
-      ${team.map(c=>`<div class="coach"><div class="ico">${c[0]}</div><div><div class="who">${c[1]}</div><div class="msg">${c[2]}</div></div></div>`).join('')}
-      <div class="warnbox">💡 上面簡報由規則 + 你嘅 Garmin 數據自動生成。下面可以同教練團即時傾計（需設定後端 + CLAUDE_API_KEY）。</div>
+      <h2>🎓 今日一課</h2>
+      <div class="msg" style="border-left:3px solid var(--acc);padding-left:10px">${dailyInsight()}</div>
     </div>
     <div class="card">
-      <h2>💬 同教練團傾計</h2>
-      <div id="chatLog">${renderChat()}</div>
-      <textarea id="chatInput" placeholder="例如：今日狀態麻麻，跑步課可以點調整？"></textarea>
+      <h2>👥 導師團 · 今日簡報</h2>
+      <div class="row" style="margin-bottom:8px">
+        <span class="pill ${r.status==='go'?'go':r.status==='cut'?'cut':'rest'}">${r.status==='go'?'✅ 照計劃':r.status==='cut'?'⚠️ 降強度':'🛑 改恢復'}</span>
+      </div>
+      ${team.map(c=>`<div class="coach"><div class="ico">${c[0]}</div><div><div class="who">${c[1]}</div><div class="msg">${c[2]}</div></div></div>`).join('')}
+    </div>
+    <div class="card">
+      <h2>💬 同導師團傾計</h2>
+      <div class="muted">揀身份，導師團會用對應專業同你嘅進修背景嚟教 + 答（需設定後端 + CLAUDE_API_KEY）。</div>
+      <label>以邊個身份問</label>
+      <select id="chatRole" onchange="setRole(this.value)">
+        ${["全部","運動員","教練","治療師"].map(x=>`<option ${x===role?'selected':''}>${x}</option>`).join('')}
+      </select>
+      <div id="chatLog" style="margin-top:10px">${renderChat()}</div>
+      <textarea id="chatInput" placeholder="例如：點解我容易代償，點改善？或：幫我幫一個膝痛客戶出 program。"></textarea>
       <button class="act" onclick="sendChat()">發送</button>
     </div>`;
   },
@@ -364,22 +445,51 @@ function renderChat(){
   if(!h.length)return '<div class="muted" style="margin-bottom:8px">未有對話。問下教練團啦。</div>';
   return h.map(m=>`<div style="margin:8px 0"><span class="who" style="color:${m.role==='user'?'var(--blue)':'var(--acc)'}">${m.role==='user'?'你':'教練團'}</span><div class="msg">${(m.text||'').replace(/</g,'&lt;').replace(/\n/g,'<br>')}</div></div>`).join('');
 }
+function conceptCard(c){
+  const titleOf=id=>{const ref=KB.reference.find(r=>r.id===id)||KB.concepts.find(x=>x.id===id);return ref?ref.title:id};
+  const links=(c.links||[]).map(titleOf);
+  return `<div class="ex"><b>${c.title}</b> <span class="hint">${c.domain}</span>
+    <div class="msg">${c.body}</div>
+    ${links.length?`<div class="hint">🔗 連結：${links.join('、')}</div>`:''}
+    ${(c.tags||[]).length?`<div class="hint">標籤：${c.tags.join('、')}</div>`:''}</div>`;
+}
+function toggleAddConcept(){const el=document.getElementById('addConcept');if(el)el.classList.toggle('hidden')}
+function addConcept(){
+  const t=gv('kc_title').trim();if(!t)return;
+  KB.concepts.push({id:'u'+Date.now(),title:t,domain:gv('kc_domain'),body:gv('kc_body'),
+    tags:gv('kc_tags').split(',').map(s=>s.trim()).filter(Boolean),links:[],source:'我'});
+  saveKB();go('knowledge');
+}
+function dailyInsight(){
+  const pool=KB.insights_pool||[];
+  if(!pool.length)return '加咗進修記錄同概念卡，導師團就會每日教你一課。';
+  const day=Math.floor((new Date(todayISO())-new Date('2026-01-01'))/864e5);
+  return pool[((day%pool.length)+pool.length)%pool.length];
+}
+function setRole(v){save('is_role',v)}
 function chatContext(){
   const daily=load('is_daily',[]), lg=lastGood(daily)||{}, logs=load('is_sessions',[]).slice(-5);
   const r=readiness({hrv:parseFloat(lg.hrv_overnight)||null,hrv7:hrv7avg(daily),sleep:parseFloat(lg.sleep_hours)||null,bb:parseFloat(lg.body_battery_high)||null,hamstring:load('is_lastham','ok')});
   const b=PLAN.blocks[curBlock()]||{};
-  return `目標：${PLAN.goal}。現處第 ${curWeek()} 週（${b.wk} ${b.name}：${b.focus}）。`
-    +`今日 readiness：${r.status}（${r.reasons.join('、')||'正常'}）。`
-    +`最新數據：靜息心率 ${lg.resting_hr||'?'}、HRV ${lg.hrv_overnight||'?'}、睡 ${lg.sleep_hours||'?'}h。`
-    +`近期打卡：${logs.map(l=>l.date+' '+l.type+'('+(l.body||'')+')').join('；')||'無'}。`
-    +(PLAN.bgContext?`背景（回答時顧及）：${PLAN.bgContext}`:'');
+  const creds=(KB.credentials||[]).map(c=>c.name+(c.status==='done'?'(已完成)':'(計劃'+(c.when||'')+')')).join('、');
+  const recent=(KB.concepts||[]).slice(-6).map(c=>c.title).join('、');
+  return (PLAN.empty?'':`自身訓練目標：${PLAN.goal}。現處第 ${curWeek()} 週（${b.wk} ${b.name}：${b.focus||''}）。`)
+    +(daily.length?`今日 readiness：${r.status}。最新：靜息心率 ${lg.resting_hr||'?'}、HRV ${lg.hrv_overnight||'?'}、睡 ${lg.sleep_hours||'?'}h。`:'')
+    +(logs.length?`近期打卡：${logs.map(l=>l.date+' '+l.type+'('+(l.body||'')+')').join('；')}。`:'')
+    +(creds?`我嘅專業進修：${creds}。`:'')
+    +(recent?`近期概念卡：${recent}。`:'')
+    +(PLAN.bgContext?`身體背景（回答時顧及）：${PLAN.bgContext}`:'');
 }
 async function sendChat(){
   const inp=document.getElementById('chatInput');const text=inp.value.trim();if(!text)return;
   const h=load('is_chat',[]);h.push({role:'user',text});save('is_chat',h);
   inp.value='';document.getElementById('chatLog').innerHTML=renderChat()+'<div class="muted">教練團思考中…</div>';
   const msgs=h.map(m=>({role:m.role,content:m.text}));
-  const sys=`你係一隊專業運動科學教練團（S&C、運動營養、物理治療、體能）。用繁體中文（香港）、精簡、可直接行動。背景：${chatContext()}`;
+  const role=load('is_role','全部');
+  const sys=`你係一隊專業運動科學導師團（涵蓋運動表現/S&C、運動營養、徒手與軟組織治療、混合耐力體能）。`
+    +`你嘅角色係用戶嘅「導師」：除咗答問題，仲要教佢「點解」、引用佢進修過嘅相關專業框架（見背景嘅進修記錄與概念卡），適時反問或考佢，幫佢鞏固專業知識。`
+    +`當前身份焦點：${role}（運動員＝幫佢自己訓練；教練＝幫佢幫客戶出 program；治療師＝評估與手法）。`
+    +`用繁體中文（香港）、精簡、可直接行動，必要時分點。背景：${chatContext()}`;
   try{
     const j=await backendPost('chat',{messages:msgs,system:sys});
     if(j.ok){h.push({role:'assistant',text:j.reply});save('is_chat',h);}
@@ -444,6 +554,7 @@ function spark(id,arr,unit){const el=document.getElementById(id);if(!el)return;
 
 (async()=>{
   await loadPlan();
+  await loadKnowledge();
   render();
   if(backendCfg().url){try{await cloudPull();render();}catch(e){}}  // 有設後端就自動由雲端同步
 })();
