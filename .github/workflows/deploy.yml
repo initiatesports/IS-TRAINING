@@ -1,0 +1,28 @@
+name: Deploy Apps Script backend
+
+# 手動觸發（Actions 分頁 → Run workflow）。跟你現有 repo 嘅 clasp 自動部署做法。
+# 需要先喺 repo Settings → Secrets 加：
+#   CLASPRC_JSON  = 你本機 ~/.clasprc.json 全部內容
+#   SCRIPT_ID     = is-training-backend 嘅 scriptId
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install -g @google/clasp
+      - name: Auth
+        run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+      - name: Write .clasp.json
+        working-directory: backend
+        run: echo '{"scriptId":"${{ secrets.SCRIPT_ID }}","rootDir":"."}' > .clasp.json
+      - name: Push & Deploy
+        working-directory: backend
+        run: |
+          clasp push -f
+          clasp deploy -d "auto $(date -u +%Y-%m-%dT%H:%M)"

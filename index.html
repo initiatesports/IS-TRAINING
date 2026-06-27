@@ -119,6 +119,30 @@ async function tryFetchDaily(){
   try{const r=await fetch('./data/daily_summary.csv');if(r.ok){const rows=parseGarminCSV(await r.text());save('is_daily',rows);return rows}}catch(e){}
   return load('is_daily',[]);
 }
+
+// ============ 雲端後端（Apps Script）============
+function backendCfg(){return load('is_backend',{url:'',token:''})}
+function setBackend(url,token){save('is_backend',{url:url.trim(),token:token.trim()})}
+async function backendPost(action,payload){
+  const c=backendCfg();if(!c.url)return {ok:false,error:'未設定後端'};
+  const r=await fetch(c.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body:JSON.stringify(Object.assign({token:c.token,action},payload))});
+  return r.json();
+}
+async function cloudPull(){
+  const c=backendCfg();if(!c.url)return {ok:false,error:'未設定後端'};
+  const r=await fetch(`${c.url}?token=${encodeURIComponent(c.token)}&action=pull&t=${Date.now()}`);
+  const j=await r.json();
+  if(j.ok){
+    if(j.store){
+      if(j.store.plan){save('is_plan',j.store.plan);PLAN=j.store.plan;PLAN.startDate=localStorage.getItem('is_start')||todayISO();}
+      if(j.store.garmin_latest)save('is_garmin',j.store.garmin_latest);
+      if(j.store.daily_summary)save('is_daily',j.store.daily_summary);
+    }
+    if(j.sessions)save('is_sessions',j.sessions);
+  }
+  return j;
+}
 function parseGarminCSV(text){
   const lines=text.trim().split(/\r?\n/);const head=lines[0].split(',');
   return lines.slice(1).map(l=>{const c=l.split(',');const o={};head.forEach((h,i)=>o[h.trim()]=c[i]);return o});
@@ -208,15 +232,14 @@ const VIEWS={
       <h2>🗓 每週模板</h2>
       ${PLAN.week.map(w=>`<div class="ex"><b>${w.d}</b> · ${w.loc} — ${w.theme}<br><span class="hint">${w.role}</span></div>`).join('')}
     </div>
-    <div class="card">
-      <h2>💪 Block 1 · ${PLAN.week[1]?PLAN.week[1].d:'D2'} 課表</h2>
-      ${(PLAN.b1_d2||[]).map(e=>`<div class="ex">${e.n}${e.t?`<span class="tag">⚠${e.t}</span>`:''}</div>`).join('')}
-    </div>
-    <div class="card">
-      <h2>🏃 Block 1 · ${PLAN.week[3]?PLAN.week[3].d:'D4'} 課表</h2>
-      ${(PLAN.b1_d4||[]).map(e=>`<div class="ex">${e.n}${e.t?`<span class="tag">⚠${e.t}</span>`:''}</div>`).join('')}
-    </div>
-    <div class="card muted">完整 12 週各 block 詳細課表喺本機 <b>docs/PLAN.md</b>。</div>`;
+    ${PLAN.blocks.map((b,i)=>`<div class="card">
+      <h2>${i===cb?'▶ ':''}${b.wk} · ${b.name}${i===cb?' <span class="pill go" style="font-size:11px">本階段</span>':''}</h2>
+      ${(b.sessions||[]).map(s=>`<div style="margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700;color:var(--acc);margin-bottom:4px">${s.title}</div>
+        ${(s.items||[]).map(e=>`<div class="ex">${e.n}${e.t?`<span class="tag">⚠${e.t}</span>`:''}</div>`).join('')}
+      </div>`).join('')}
+    </div>`).join('')}
+    <div class="card muted">完整 12 週計劃全文（連營養/防傷/數據）喺本機 <b>docs/PLAN.md</b>。</div>`;
   },
   log(){
     const logs=load('is_sessions',[]);
@@ -261,6 +284,17 @@ const VIEWS={
       <div id="sleepSpark"><div class="muted">未有數據</div></div>
     </div>
     <div class="card">
+      <h2>☁️ 雲端同步</h2>
+      <div class="muted">設定後端後，計劃同 Garmin 數據自動由雲端同步 —— 唔使逐部機匯入。</div>
+      <label>後端 /exec 網址</label><input id="b_url" placeholder="https://script.google.com/.../exec" value="${backendCfg().url}">
+      <label>存取密碼 (ACCESS_TOKEN)</label><input id="b_token" placeholder="你設定嘅密碼" value="${backendCfg().token}">
+      <div class="grid2" style="margin-top:10px">
+        <button class="act ghost" onclick="saveBackend()">儲存設定</button>
+        <button class="act" onclick="doPull()">由雲端拉取</button>
+      </div>
+      <div id="syncMsg" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
       <h2>📋 計劃檔</h2>
       <div class="muted">重新匯入／更新本機 plan.json（覆蓋現有計劃，只存呢部裝置）。</div>
       <label>匯入 plan.json</label><input type="file" accept=".json" onchange="impPlan(this)">
@@ -291,7 +325,13 @@ const VIEWS={
           ${r.status==='go'?'✅ 照計劃':r.status==='cut'?'⚠️ 降強度':'🛑 改恢復'}</span>
       </div>
       ${team.map(c=>`<div class="coach"><div class="ico">${c[0]}</div><div><div class="who">${c[1]}</div><div class="msg">${c[2]}</div></div></div>`).join('')}
-      <div class="warnbox">💡 即時 AI 對話（直接傾計問教練團）將喺接駁 Claude API 後開放。而家簡報由規則 + 你嘅 Garmin 數據自動生成。</div>
+      <div class="warnbox">💡 上面簡報由規則 + 你嘅 Garmin 數據自動生成。下面可以同教練團即時傾計（需設定後端 + CLAUDE_API_KEY）。</div>
+    </div>
+    <div class="card">
+      <h2>💬 同教練團傾計</h2>
+      <div id="chatLog">${renderChat()}</div>
+      <textarea id="chatInput" placeholder="例如：今日狀態麻麻，跑步課可以點調整？"></textarea>
+      <button class="act" onclick="sendChat()">發送</button>
     </div>`;
   },
 };
@@ -313,10 +353,51 @@ function calcReady(){
      <div style="margin-top:6px">建議：${r.rec.join("、")}</div>`;
 }
 function val(id){const v=document.getElementById(id).value;return v===''?null:parseFloat(v)}
-function addLog(){
+async function addLog(){
   const logs=load('is_sessions',[]);
-  logs.push({date:gv('l_date'),type:gv('l_type'),dur:gv('l_dur'),rpe:gv('l_rpe'),body:gv('l_body'),note:gv('l_note')});
-  save('is_sessions',logs);go('log');
+  const s={date:gv('l_date'),type:gv('l_type'),dur:gv('l_dur'),rpe:gv('l_rpe'),body:gv('l_body'),note:gv('l_note')};
+  logs.push(s);save('is_sessions',logs);go('log');
+  if(backendCfg().url){try{await backendPost('log',{session:s})}catch(e){}}  // 同步上雲
+}
+function renderChat(){
+  const h=load('is_chat',[]);
+  if(!h.length)return '<div class="muted" style="margin-bottom:8px">未有對話。問下教練團啦。</div>';
+  return h.map(m=>`<div style="margin:8px 0"><span class="who" style="color:${m.role==='user'?'var(--blue)':'var(--acc)'}">${m.role==='user'?'你':'教練團'}</span><div class="msg">${(m.text||'').replace(/</g,'&lt;').replace(/\n/g,'<br>')}</div></div>`).join('');
+}
+function chatContext(){
+  const daily=load('is_daily',[]), lg=lastGood(daily)||{}, logs=load('is_sessions',[]).slice(-5);
+  const r=readiness({hrv:parseFloat(lg.hrv_overnight)||null,hrv7:hrv7avg(daily),sleep:parseFloat(lg.sleep_hours)||null,bb:parseFloat(lg.body_battery_high)||null,hamstring:load('is_lastham','ok')});
+  const b=PLAN.blocks[curBlock()]||{};
+  return `目標：${PLAN.goal}。現處第 ${curWeek()} 週（${b.wk} ${b.name}：${b.focus}）。`
+    +`今日 readiness：${r.status}（${r.reasons.join('、')||'正常'}）。`
+    +`最新數據：靜息心率 ${lg.resting_hr||'?'}、HRV ${lg.hrv_overnight||'?'}、睡 ${lg.sleep_hours||'?'}h。`
+    +`近期打卡：${logs.map(l=>l.date+' '+l.type+'('+(l.body||'')+')').join('；')||'無'}。`
+    +(PLAN.bgContext?`背景（回答時顧及）：${PLAN.bgContext}`:'');
+}
+async function sendChat(){
+  const inp=document.getElementById('chatInput');const text=inp.value.trim();if(!text)return;
+  const h=load('is_chat',[]);h.push({role:'user',text});save('is_chat',h);
+  inp.value='';document.getElementById('chatLog').innerHTML=renderChat()+'<div class="muted">教練團思考中…</div>';
+  const msgs=h.map(m=>({role:m.role,content:m.text}));
+  const sys=`你係一隊專業運動科學教練團（S&C、運動營養、物理治療、體能）。用繁體中文（香港）、精簡、可直接行動。背景：${chatContext()}`;
+  try{
+    const j=await backendPost('chat',{messages:msgs,system:sys});
+    if(j.ok){h.push({role:'assistant',text:j.reply});save('is_chat',h);}
+    else{h.push({role:'assistant',text:'⚠️ '+(j.error||'失敗')+'（檢查後端 + CLAUDE_API_KEY 設定）'});save('is_chat',h);}
+  }catch(e){h.push({role:'assistant',text:'⚠️ '+e.message});save('is_chat',h);}
+  document.getElementById('chatLog').innerHTML=renderChat();
+}
+function saveBackend(){
+  setBackend(gv('b_url'),gv('b_token'));
+  const m=document.getElementById('syncMsg');if(m)m.innerHTML='<div class="pill go">✅ 已儲存</div>';
+}
+async function doPull(){
+  const m=document.getElementById('syncMsg');if(m)m.innerHTML='<div class="muted">拉取中…</div>';
+  setBackend(gv('b_url'),gv('b_token'));
+  try{const j=await cloudPull();
+    if(j.ok){if(m)m.innerHTML='<div class="pill go">✅ 已由雲端同步</div>';render();go('today');}
+    else if(m)m.innerHTML=`<div class="pill rest">❌ ${j.error||'失敗'}</div>`;
+  }catch(e){if(m)m.innerHTML=`<div class="pill rest">❌ ${e.message}</div>`}
 }
 function gv(id){return document.getElementById(id).value}
 
@@ -361,7 +442,11 @@ function spark(id,arr,unit){const el=document.getElementById(id);if(!el)return;
     <div class="hint">最新 ${arr[arr.length-1]}${unit} ｜ 範圍 ${mn}–${mx}${unit}</div>`;
 }
 
-(async()=>{await loadPlan();render();})();
+(async()=>{
+  await loadPlan();
+  render();
+  if(backendCfg().url){try{await cloudPull();render();}catch(e){}}  // 有設後端就自動由雲端同步
+})();
 </script>
 </body>
 </html>
