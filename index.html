@@ -403,6 +403,13 @@ const VIEWS={
       </div>
       ${team.map(c=>`<div class="coach"><div class="ico">${c[0]}</div><div><div class="who">${c[1]}</div><div class="msg">${c[2]}</div></div></div>`).join('')}
     </div>
+    ${(KB.faculty&&KB.faculty.length)?`<div class="card">
+      <h2>🏛 你嘅專業團隊（${KB.faculty.length} 位）</h2>
+      <div class="muted" style="margin-bottom:6px">每位對應你真實學過嘅學科，傾計時會用對應專業教你。</div>
+      ${KB.faculty.map(f=>`<div class="coach"><div class="ico">${f.ico}</div><div>
+        <div class="who">${f.name} <span class="hint">· ${f.base}</span></div>
+        <div class="msg">${f.teach}</div></div></div>`).join('')}
+    </div>`:''}
     <div class="card">
       <h2>💬 同導師團傾計</h2>
       <div class="muted">揀身份，導師團會用對應專業同你嘅進修背景嚟教 + 答（需設定後端 + CLAUDE_API_KEY）。</div>
