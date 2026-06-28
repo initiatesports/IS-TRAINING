@@ -14,14 +14,33 @@ const PROP = PropertiesService.getScriptProperties();
 const STORE_TAB = 'store';
 const LOG_TAB = 'sessions';
 
-function sheet_() { return SpreadsheetApp.openById(PROP.getProperty('SHEET_ID')); }
+/** 攞 Sheet；冇 SHEET_ID 就自動建一個新 Sheet 並記低 ID */
+function sheet_() {
+  let id = PROP.getProperty('SHEET_ID');
+  if (!id) {
+    const ss = SpreadsheetApp.create('IS Training Log');
+    id = ss.getId();
+    PROP.setProperty('SHEET_ID', id);
+  }
+  return SpreadsheetApp.openById(id);
+}
 
-/** 一鍵建立 tab（手動跑一次） */
+/** 一鍵設定：自動建 Sheet + tab、自動生成 ACCESS_TOKEN，返回俾你抄低。手動跑一次（會彈授權，批准即可）。 */
 function setup() {
   const ss = sheet_();
   if (!ss.getSheetByName(STORE_TAB)) ss.insertSheet(STORE_TAB).appendRow(['key', 'json', 'updated']);
   if (!ss.getSheetByName(LOG_TAB)) ss.insertSheet(LOG_TAB).appendRow(['date', 'type', 'dur', 'rpe', 'body', 'note']);
-  return '✅ setup done';
+  let token = PROP.getProperty('ACCESS_TOKEN');
+  if (!token) {
+    token = 'is_' + Utilities.getUuid().replace(/-/g, '').slice(0, 20);
+    PROP.setProperty('ACCESS_TOKEN', token);
+  }
+  let url = '';
+  try { url = ScriptApp.getService().getUrl(); } catch (e) {}
+  const msg = '✅ setup done\nSHEET_ID = ' + ss.getId() + '\nACCESS_TOKEN = ' + token + '\nWEB_APP_URL = ' + url +
+    '\n\n（把 ACCESS_TOKEN 同 WEB_APP_URL 貼入 app 數據→雲端同步。CLAUDE_API_KEY 另行喺指令碼屬性加，AI 對話先需要。）';
+  Logger.log(msg);
+  return msg;
 }
 
 function out_(obj) {

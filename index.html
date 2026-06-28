@@ -148,6 +148,7 @@ async function cloudPull(){
       if(j.store.garmin_latest)save('is_garmin',j.store.garmin_latest);
       if(j.store.daily_summary)save('is_daily',j.store.daily_summary);
       if(j.store.knowledge){save('is_kb',j.store.knowledge);KB=Object.assign(KB,j.store.knowledge);}
+      if(j.store.workouts)save('is_workouts',j.store.workouts);
     }
     if(j.sessions)save('is_sessions',j.sessions);
   }
@@ -257,28 +258,47 @@ const VIEWS={
     <div class="card muted">完整 12 週計劃全文（連營養/防傷/數據）喺本機 <b>docs/PLAN.md</b>。</div>`;
   },
   log(){
-    const logs=load('is_sessions',[]);
+    if(PLAN.empty) return importPrompt();
+    const sessions=(PLAN.blocks[curBlock()]||{}).sessions||[];
+    const sel=load('is_logsess',sessions[0]&&sessions[0].title);
+    const sess=sessions.find(s=>s.title===sel)||sessions[0]||{title:'—',items:[]};
+    const workouts=load('is_workouts',[]);
     return `
     <div class="card">
-      <h2>✍️ 今日打卡</h2>
-      <label>日期</label><input type="date" id="l_date" value="${todayISO()}">
-      <label>課題</label>
-      <select id="l_type">${(PLAN.week||[]).map(w=>`<option>${w.d} ${w.loc} · ${w.theme}</option>`).join('')}<option>跑步 Zone 2</option><option>跑步 質量/間歇</option><option>恢復/休息</option></select>
-      <div class="grid2">
-        <div><label>時長（分鐘）</label><input id="l_dur" type="number" inputmode="numeric"></div>
-        <div><label>RPE（1–10）</label><input id="l_rpe" type="number" inputmode="numeric" min="1" max="10"></div>
-      </div>
-      <label>身體狀態</label>
-      <select id="l_body"><option>都正常</option><option>部位繃緊</option><option>有痛感</option><option>頭痛</option><option>關節痛</option></select>
-      <label>備註</label><textarea id="l_note" placeholder="今日感受、重量、配速…"></textarea>
-      <div style="height:10px"></div>
-      <button class="act" onclick="addLog()">儲存打卡</button>
+      <h2>✍️ 訓練打卡（逐動作入重量）</h2>
+      <label>日期</label><input type="date" id="w_date" value="${todayISO()}">
+      <label>今日課節</label>
+      <select id="w_sess" onchange="selLogSess(this.value)">
+        ${sessions.map(s=>`<option ${s.title===sess.title?'selected':''}>${s.title}</option>`).join('')}
+      </select>
     </div>
     <div class="card">
-      <h2>📚 最近記錄（${logs.length}）</h2>
-      ${logs.slice(-15).reverse().map(l=>`<div class="logitem"><b>${l.date}</b> · ${l.type}
-        ${l.dur?` · ${l.dur}分`:''}${l.rpe?` · RPE ${l.rpe}`:''} · <span class="muted">${l.body}</span>
-        ${l.note?`<br><span class="muted">${l.note}</span>`:''}</div>`).join('')||'<div class="muted">未有記錄</div>'}
+      <h2>📋 ${sess.title}</h2>
+      <div class="muted" style="margin-bottom:6px">入今次重量／次數，下面「上次」會自動記住，方便加重。</div>
+      ${(sess.items||[]).map((it,i)=>{
+        const name=exerciseName(it.n);
+        const last=lastEntry(name);
+        const weighted=/\d+\s*×/.test(it.n);
+        return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
+          <div style="font-size:14px"><b>${it.n}</b>${it.t?`<span class="tag">⚠${it.t}</span>`:''}</div>
+          ${last?`<div class="hint">📈 上次：${last}</div>`:''}
+          ${weighted?`<div class="row" style="margin-top:6px">
+            <input id="w_wt_${i}" type="number" inputmode="decimal" placeholder="重量 kg" style="flex:1">
+            <input id="w_rp_${i}" type="text" placeholder="次數 e.g. 6,6,5" style="flex:1">
+          </div>`:`<label style="margin-top:6px"><input type="checkbox" id="w_dn_${i}"> 完成（或填備註）</label>`}
+        </div>`;
+      }).join('')}
+      <div class="grid2" style="margin-top:10px">
+        <div><label>RPE（1–10）</label><input id="w_rpe" type="number" inputmode="numeric" min="1" max="10"></div>
+        <div><label>身體狀態</label><select id="w_body"><option>都正常</option><option>部位繃緊</option><option>有痛感</option><option>頭痛</option><option>關節痛</option></select></div>
+      </div>
+      <label>備註</label><textarea id="w_note" placeholder="感受、配速、痛感位…"></textarea>
+      <div style="height:10px"></div>
+      <button class="act" onclick="saveWorkout()">儲存今次訓練</button>
+    </div>
+    <div class="card">
+      <h2>📚 最近訓練（${workouts.length}）</h2>
+      ${renderWorkoutHistory(workouts)}
     </div>`;
   },
   data(){
@@ -534,14 +554,14 @@ function facultyDigest(){
   return list.map(f=>`${f.name}「${f.sources||f.base}」`).join('；');
 }
 function chatContext(){
-  const daily=load('is_daily',[]), lg=lastGood(daily)||{}, logs=load('is_sessions',[]).slice(-5);
+  const daily=load('is_daily',[]), lg=lastGood(daily)||{}, ws=load('is_workouts',[]).slice(-5);
   const r=readiness({hrv:parseFloat(lg.hrv_overnight)||null,hrv7:hrv7avg(daily),sleep:parseFloat(lg.sleep_hours)||null,bb:parseFloat(lg.body_battery_high)||null,hamstring:load('is_lastham','ok')});
   const b=PLAN.blocks[curBlock()]||{};
   const creds=(KB.credentials||[]).map(c=>c.name+(c.status==='done'?'(已完成)':'(計劃'+(c.when||'')+')')).join('、');
   const recent=(KB.concepts||[]).slice(-6).map(c=>c.title).join('、');
   return (PLAN.empty?'':`自身訓練目標：${PLAN.goal}。現處第 ${curWeek()} 週（${b.wk} ${b.name}：${b.focus||''}）。`)
     +(daily.length?`今日 readiness：${r.status}。最新：靜息心率 ${lg.resting_hr||'?'}、HRV ${lg.hrv_overnight||'?'}、睡 ${lg.sleep_hours||'?'}h。`:'')
-    +(logs.length?`近期打卡：${logs.map(l=>l.date+' '+l.type+'('+(l.body||'')+')').join('；')}。`:'')
+    +(ws.length?`近期訓練(含重量,寫計劃用)：${ws.map(w=>w.date+' '+w.session+'：'+w.entries.filter(e=>e.weight).map(e=>e.name+' '+e.weight+'kg×'+(e.reps||'')).join('、')+(w.body&&w.body!=='都正常'?'['+w.body+']':'')).join('；')}。`:'')
     +(creds?`我嘅專業進修：${creds}。`:'')
     +(recent?`近期概念卡：${recent}。`:'')
     +(KB.faculty&&KB.faculty.length?`可調用嘅專家及其權威來源（回答時引用對應專家同來源）：${facultyDigest()}。`:'')
@@ -556,7 +576,8 @@ async function sendChat(){
   const sys=`你係一隊專業運動科學導師團（涵蓋運動表現/S&C、運動營養、徒手與軟組織治療、混合耐力體能）。`
     +`你嘅角色係用戶嘅「導師」：除咗答問題，仲要教佢「點解」、引用佢進修過嘅相關專業框架（見背景嘅進修記錄與概念卡），適時反問或考佢，幫佢鞏固專業知識。`
     +`當前身份焦點：${role}（運動員＝幫佢自己訓練；教練＝幫佢幫客戶出 program；治療師＝評估與手法）。`
-    +`用繁體中文（香港）、精簡、可直接行動，必要時分點。背景：${chatContext()}`;
+    +`若背景提到用戶想學英文：回答時適當穿插相關英文術語 / coaching cue（附中文），可教 1 個 coaching phrase，鼓勵佢用英文表達並溫和糾正佢英文。`
+    +`用繁體中文（香港）為主、精簡、可直接行動，必要時分點。背景：${chatContext()}`;
   try{
     const j=await backendPost('chat',{messages:msgs,system:sys});
     if(j.ok){h.push({role:'assistant',text:j.reply});save('is_chat',h);}
@@ -577,6 +598,42 @@ async function doPull(){
   }catch(e){if(m)m.innerHTML=`<div class="pill rest">❌ ${e.message}</div>`}
 }
 function gv(id){return document.getElementById(id).value}
+
+// ============ 訓練打卡（逐動作 + 上次追蹤）============
+function exerciseName(s){
+  const m=s.match(/^(.*?)\s*\d+\s*×/);   // 取 sets×reps 之前
+  let n=m?m[1]:s;
+  return n.replace(/[（(].*$/,'').trim();
+}
+function lastEntry(name){
+  const ws=load('is_workouts',[]);
+  for(let i=ws.length-1;i>=0;i--){
+    const e=(ws[i].entries||[]).find(x=>x.name===name&&(x.weight||x.reps));
+    if(e)return `${e.weight?e.weight+'kg':''}${e.reps?' × '+e.reps:''} （${ws[i].date}）`;
+  }
+  return null;
+}
+function selLogSess(v){save('is_logsess',v);render();}
+async function saveWorkout(){
+  const sessions=(PLAN.blocks[curBlock()]||{}).sessions||[];
+  const sel=load('is_logsess',sessions[0]&&sessions[0].title);
+  const sess=sessions.find(s=>s.title===sel)||sessions[0]||{items:[]};
+  const entries=(sess.items||[]).map((it,i)=>{
+    const wt=document.getElementById('w_wt_'+i), rp=document.getElementById('w_rp_'+i), dn=document.getElementById('w_dn_'+i);
+    return {ex:it.n, name:exerciseName(it.n), weight:wt?wt.value:'', reps:rp?rp.value:'', done:dn?dn.checked:false};
+  }).filter(e=>e.weight||e.reps||e.done);
+  const w={date:gv('w_date'),session:sess.title,entries,rpe:gv('w_rpe'),body:gv('w_body'),note:gv('w_note')};
+  const ws=load('is_workouts',[]); ws.push(w); save('is_workouts',ws);
+  if(backendCfg().url){try{await backendPost('put',{key:'workouts',value:ws})}catch(e){}}
+  go('log');
+}
+function renderWorkoutHistory(ws){
+  if(!ws.length)return '<div class="muted">未有記錄</div>';
+  return ws.slice(-10).reverse().map(w=>`<div class="logitem"><b>${w.date}</b> · ${w.session}
+    ${w.rpe?` · RPE ${w.rpe}`:''}${w.body&&w.body!=='都正常'?` · ${w.body}`:''}
+    ${w.entries.filter(e=>e.weight||e.reps).map(e=>`<br><span class="muted">${e.name}: ${e.weight?e.weight+'kg':''}${e.reps?' × '+e.reps:''}</span>`).join('')}
+    ${w.note?`<br><span class="hint">${w.note}</span>`:''}</div>`).join('');
+}
 
 async function initToday(){
   const g=await tryFetchGarmin();const daily=await tryFetchDaily();
