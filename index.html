@@ -351,7 +351,7 @@ const VIEWS={
     const keys=order.filter(k=>n[k]).concat(Object.keys(n).filter(k=>!order.includes(k)));
     return `<div class="card">
       <h2>🥗 營養規劃（運動營養師）</h2>
-      <div class="muted" style="margin-bottom:6px">雙線：上身增肌 + HYROX 精瘦，按訓練日/休息日調整。</div>
+      <div class="muted" style="margin-bottom:6px">按你目標雙線兼顧（增肌 + 精瘦），訓練日/休息日調整。</div>
       ${keys.map(k=>`<div class="ex"><b>${k}</b><br><span class="msg">${n[k]}</span></div>`).join('')}
     </div>`;
   },
