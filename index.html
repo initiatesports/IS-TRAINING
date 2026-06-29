@@ -169,7 +169,7 @@ function hrv7avg(rows){
 }
 
 // ============ Views ============
-const TABS=[["today","今日"],["plan","訓練"],["knowledge","知識"],["coachTools","教練"],["therapy","治療"],["faculty","導師團"],["clinic","研討室"],["log","打卡"],["data","數據"]];
+const TABS=[["today","今日"],["plan","訓練"],["nutrition","營養"],["knowledge","知識"],["coachTools","教練"],["therapy","治療"],["faculty","導師團"],["clinic","研討室"],["log","打卡"],["data","數據"]];
 let tab="today";
 function render(){
   document.getElementById('subhead').textContent=PLAN.goal||'個人訓練系統';
@@ -297,6 +297,13 @@ const VIEWS={
       <button class="act" onclick="saveWorkout()">儲存今次訓練</button>
     </div>
     <div class="card">
+      <h2>🗣 導師團點評今日訓練</h2>
+      <div class="muted">儲存後撳下面，導師團會評價今日表現（對比上次重量/RPE）+ 畀後續建議 + 下一課重點（需後端 + CLAUDE_API_KEY）。</div>
+      <div style="height:8px"></div>
+      <button class="act ghost" onclick="reviewWorkout()">請導師團點評</button>
+      <div id="reviewOut" style="margin-top:10px">${renderLastReview()}</div>
+    </div>
+    <div class="card">
       <h2>📚 最近訓練（${workouts.length}）</h2>
       ${renderWorkoutHistory(workouts)}
     </div>`;
@@ -334,6 +341,18 @@ const VIEWS={
       <div class="muted">重新匯入／更新本機 plan.json（覆蓋現有計劃，只存呢部裝置）。</div>
       <label>匯入 plan.json</label><input type="file" accept=".json" onchange="impPlan(this)">
       <div id="planMsg"></div>
+    </div>`;
+  },
+  // ===== 營養 =====
+  nutrition(){
+    const n=(PLAN&&PLAN.nutrition)||null;
+    if(!n) return '<div class="card muted">未載入營養規劃（喺數據→雲端拉取，或匯入 plan.json）。</div>';
+    const order=["原則","熱量","蛋白","碳水","脂肪","時序","補水","補劑","香港食物","一日範例(訓練日)","顧及"];
+    const keys=order.filter(k=>n[k]).concat(Object.keys(n).filter(k=>!order.includes(k)));
+    return `<div class="card">
+      <h2>🥗 營養規劃（運動營養師）</h2>
+      <div class="muted" style="margin-bottom:6px">雙線：上身增肌 + HYROX 精瘦，按訓練日/休息日調整。</div>
+      ${keys.map(k=>`<div class="ex"><b>${k}</b><br><span class="msg">${n[k]}</span></div>`).join('')}
     </div>`;
   },
   // ===== 知識庫 =====
@@ -633,6 +652,26 @@ function renderWorkoutHistory(ws){
     ${w.rpe?` · RPE ${w.rpe}`:''}${w.body&&w.body!=='都正常'?` · ${w.body}`:''}
     ${w.entries.filter(e=>e.weight||e.reps).map(e=>`<br><span class="muted">${e.name}: ${e.weight?e.weight+'kg':''}${e.reps?' × '+e.reps:''}</span>`).join('')}
     ${w.note?`<br><span class="hint">${w.note}</span>`:''}</div>`).join('');
+}
+async function reviewWorkout(){
+  const ws=load('is_workouts',[]); const w=ws[ws.length-1];
+  const o=document.getElementById('reviewOut');
+  if(!w){if(o)o.innerHTML='<div class="pill rest">未有訓練記錄 — 先儲存今次訓練</div>';return}
+  if(o)o.innerHTML='<div class="muted">導師團分析緊…</div>';
+  const det=(w.entries||[]).map(e=>`${e.name}: ${e.weight?e.weight+'kg':''}${e.reps?'×'+e.reps:''}${(e.done&&!e.weight&&!e.reps)?'(完成)':''}`).join('；');
+  const summary=`日期 ${w.date}、課節「${w.session}」、RPE ${w.rpe||'?'}、身體 ${w.body||'正常'}。動作:${det||'—'}。備註:${w.note||'無'}。`;
+  const sys=`你係用戶嘅運動科學導師團。佢啱練完一課，以下係今日記錄。請：①點評今日表現（有重量就對比「上次」、睇 RPE 同進度）②做得好 / 要注意（顧傷患）③具體後續建議（下次重量/組數點調、下一課重點）④一句鼓勵。用繁體中文（香港）、精簡分點、可穿插 1 個英文 coaching cue（附中文）。背景：${chatContext()}`;
+  try{
+    const j=await backendPost('chat',{messages:[{role:'user',content:'今日訓練記錄：'+summary}],system:sys});
+    if(j.ok){save('is_lastreview',{date:w.date,session:w.session,text:j.reply});if(o)o.innerHTML=renderLastReview();}
+    else if(o)o.innerHTML=`<div class="pill rest">❌ ${j.error||'失敗'}（需設定後端 + CLAUDE_API_KEY）</div>`;
+  }catch(e){if(o)o.innerHTML=`<div class="pill rest">❌ ${e.message}</div>`}
+}
+function renderLastReview(){
+  const r=load('is_lastreview',null);
+  if(!r)return '<div class="muted">未有點評 — 練完撳上面。</div>';
+  return `<div class="who" style="color:var(--acc)">導師團 · ${r.date} ${r.session||''}</div>
+    <div class="msg">${(r.text||'').replace(/</g,'&lt;').replace(/\n/g,'<br>')}</div>`;
 }
 
 async function initToday(){
