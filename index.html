@@ -151,6 +151,7 @@ async function cloudPull(){
       if(j.store.daily_summary)save('is_daily',j.store.daily_summary);
       if(j.store.knowledge){save('is_kb',j.store.knowledge);KB=Object.assign(KB,j.store.knowledge);}
       if(j.store.workouts)save('is_workouts',j.store.workouts);
+      if(j.store.bodyweight)save('is_bw',j.store.bodyweight);
     }
     if(j.sessions)save('is_sessions',j.sessions);
   }
@@ -203,6 +204,10 @@ const VIEWS={
       <div class="muted">第 ${curWeek()} 週 · ${b.wk}</div>
       <div class="big">${b.name}</div>
       <div class="muted" style="margin-top:6px">${b.focus}</div>
+    </div>
+    <div class="card">
+      <h2>📌 今日焦點</h2>
+      ${todayFocus()}
     </div>
     <div class="card">
       <h2>🟢 今日 Readiness</h2>
@@ -284,6 +289,7 @@ const VIEWS={
         return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
           <div style="font-size:14px"><b>${it.n}</b>${it.t?`<span class="tag">⚠${it.t}</span>`:''}</div>
           ${last?`<div class="hint">📈 上次：${last}</div>`:''}
+          ${weighted&&suggestNext(name)?`<div class="hint" style="color:var(--acc)">${suggestNext(name)}</div>`:''}
           ${weighted?`<div class="row" style="margin-top:6px">
             <input id="w_wt_${i}" type="number" inputmode="decimal" placeholder="重量 kg" style="flex:1">
             <input id="w_rp_${i}" type="text" placeholder="次數 e.g. 6,6,5" style="flex:1">
@@ -326,6 +332,17 @@ const VIEWS={
     <div class="card">
       <h2>😴 睡眠趨勢</h2>
       <div id="sleepSpark"><div class="muted">未有數據</div></div>
+    </div>
+    <div class="card">
+      <h2>⚖️ 體重 / 體圍（目標 lean bulk 70kg）</h2>
+      <div class="muted" style="margin-bottom:6px">每週同條件磅一次（晨起空腹如廁後），睇趨勢唔好睇單日。</div>
+      <div class="grid2">
+        <div><label>體重 kg</label><input id="bw_w" type="number" inputmode="decimal" step="0.1" placeholder="例如 68.5"></div>
+        <div><label>腰圍 cm（可選）</label><input id="bw_waist" type="number" inputmode="decimal" step="0.1" placeholder="可留空"></div>
+      </div>
+      <label>日期</label><input id="bw_date" type="date" value="${todayISO()}">
+      <div style="height:8px"></div><button class="act" onclick="saveBW()">記錄體重</button>
+      <div id="bwOut" style="margin-top:10px">${renderBW()}</div>
     </div>
     <div class="card">
       <h2>☁️ 雲端同步</h2>
@@ -422,11 +439,11 @@ const VIEWS={
     return `
     <div class="card">
       <h2>🔬 個案研討室</h2>
-      <div class="muted">貼一個個案（客戶 / 病人 / 學員 / 自己），相關部門專家會診，畀你結構化多角度分析。需設定後端 + CLAUDE_API_KEY。</div>
+      <div class="muted">貼一個個案（客戶 / 病人 / 學員 / 自己）→ 複製現成會診 prompt → 貼落 claude.ai 導師團 Project 就有結構化多角度會診。</div>
       <label>個案類型</label>
       <select id="cs_type"><option>客戶（訓練）</option><option>病人（治療）</option><option>學員（教學）</option><option>自己</option></select>
       <label>個案描述</label><textarea id="cs_desc" placeholder="例如：10歲學員學唔到某動作、落地好重；或 42歲客戶久坐、深蹲膝內扣+腰痠…"></textarea>
-      <div style="height:8px"></div><button class="act" onclick="consult()">召開會診</button>
+      <div style="height:8px"></div><button class="act" onclick="consult()">📋 複製個案 → 會診</button>
       <div id="csOut" style="margin-top:12px"></div>
     </div>
     <div class="card">
@@ -465,14 +482,14 @@ const VIEWS={
     ${(KB.faculty&&KB.faculty.length)?facultyRoster():''}
     <div class="card">
       <h2>💬 同導師團傾計</h2>
-      <div class="muted">揀身份，導師團會用對應專業同你嘅進修背景嚟教 + 答（需設定後端 + CLAUDE_API_KEY）。</div>
+      <div class="muted">揀身份 → 打問題 → 複製現成 prompt → 貼落 claude.ai 導師團 Project（Opus 4.8，識晒你背景）。</div>
       <label>以邊個身份問</label>
       <select id="chatRole" onchange="setRole(this.value)">
         ${["全部","運動員","教練","治療師"].map(x=>`<option ${x===role?'selected':''}>${x}</option>`).join('')}
       </select>
-      <div id="chatLog" style="margin-top:10px">${renderChat()}</div>
       <textarea id="chatInput" placeholder="例如：點解我容易代償，點改善？或：幫我幫一個膝痛客戶出 program。"></textarea>
-      <button class="act" onclick="sendChat()">發送</button>
+      <button class="act" onclick="sendChat()">📋 複製問題 → 問導師團</button>
+      <div id="chatLog" style="margin-top:10px"></div>
     </div>`;
   },
 };
@@ -545,6 +562,46 @@ function addConcept(){
     tags:gv('kc_tags').split(',').map(s=>s.trim()).filter(Boolean),links:[],source:'我'});
   saveKB();go('knowledge');
 }
+// ===== 體重 / 體圍追蹤（服務 lean bulk 70kg）=====
+function bwData(){return load('is_bw',[]).slice().sort((a,b)=>(a.date<b.date?-1:1))}
+async function saveBW(){
+  const w=parseFloat(gv('bw_w')); if(isNaN(w))return;
+  const rec={date:gv('bw_date')||todayISO(),w,waist:parseFloat(gv('bw_waist'))||null};
+  const arr=load('is_bw',[]).filter(x=>x.date!==rec.date); arr.push(rec); save('is_bw',arr);
+  if(backendCfg().url){try{await backendPost('put',{key:'bodyweight',value:arr})}catch(e){}}
+  const o=document.getElementById('bwOut'); if(o)o.innerHTML=renderBW();
+}
+function renderBW(){
+  const arr=bwData(); if(!arr.length)return '<div class="muted">未有記錄。每週磅一次就會見到趨勢同每週增重速率。</div>';
+  const ws=arr.map(x=>x.w), latest=arr[arr.length-1];
+  let rate='';
+  if(arr.length>=2){
+    const first=arr[0], last=arr[arr.length-1];
+    const days=(new Date(last.date)-new Date(first.date))/864e5;
+    if(days>0){const perWk=+((last.w-first.w)/days*7).toFixed(2), tgt=perWk>=0.25&&perWk<=0.4;
+      rate=`<div class="pill ${tgt?'go':'cut'}" style="display:inline-block;margin-top:6px">每週 ${perWk>=0?'+':''}${perWk.toFixed(2)}kg ${tgt?'✅ 達標(0.25–0.4)':perWk>0.4?'⚠️偏快·脂肪易上':perWk<0?'⚠️跌緊':'⚠️偏慢'}</div>`;}
+  }
+  const toGo=+(70-latest.w).toFixed(1);
+  const mx=Math.max(...ws),mn=Math.min(...ws);
+  const spark=`<div class="spark" style="margin-top:8px">${ws.slice(-14).map(v=>`<span style="height:${10+(mx===mn?50:(v-mn)/(mx-mn)*80)}%" title="${v}kg"></span>`).join('')}</div>`;
+  return `<div>最新 <b>${latest.w}kg</b>${latest.waist?` · 腰 ${latest.waist}cm`:''} · 距 70kg 仲 ${toGo>0?toGo:0}kg</div>${rate}${spark}
+    <div class="hint">範圍 ${mn}–${mx}kg ｜ ${arr.length} 筆記錄</div>`;
+}
+function todayReadiness(){
+  const daily=load('is_daily',[]),lg=lastGood(daily)||{};
+  return readiness({hrv:parseFloat(lg.hrv_overnight)||null,hrv7:hrv7avg(daily),sleep:parseFloat(lg.sleep_hours)||null,bb:parseFloat(lg.body_battery_high)||null,hamstring:load('is_lastham','ok')});
+}
+function todayFocus(){
+  const wd=['週日','週一','週二','週三','週四','週五','週六'][new Date(todayISO()).getDay()];
+  const w=(PLAN.week||[]).find(x=>(x.d||'').includes(wd));
+  const r=todayReadiness();
+  const pill=`<span class="pill ${r.status==='go'?'go':r.status==='cut'?'cut':'rest'}">${r.status==='go'?'✅ 照計劃':r.status==='cut'?'⚠️ 降強度':'🛑 改恢復'}</span>`;
+  const rec=r.status!=='go'?`<div class="muted" style="margin-top:6px">調整：${r.rec.join('、')}</div>`:'';
+  if(!w) return `<div class="ex"><b>${wd}</b> · ${wd==='週三'?'主動恢復日':'休息日（教課）'}</div><div style="margin-top:6px">${pill}</div>${rec}`;
+  return `<div class="ex"><b>${w.d}</b> · ${w.loc}<br><span class="muted">${w.theme}</span></div>
+    <div style="margin-top:6px">${pill}</div>${rec}
+    <div class="hint" style="margin-top:6px">去「打卡」揀今日課節入重量。</div>`;
+}
 function dailyInsight(){
   const pool=KB.insights_pool||[];
   if(!pool.length)return '加咗進修記錄同概念卡，導師團就會每日教你一課。';
@@ -553,19 +610,13 @@ function dailyInsight(){
 }
 function setRole(v){save('is_role',v)}
 function fullFacultyDigest(){return (KB.faculty||[]).map(f=>`${f.name}「${f.sources||f.base}」`).join('；')}
+function buildCasePrompt(type,desc){
+  return `請導師團「個案研討室」會診以下個案。格式：①各相關部門專家觀點（標明專家身份+引用權威來源/理論）②綜合可行動建議 ③風險 / 紅旗 / 需否轉介就醫 ④仲要收集嘅資料。用繁體中文（香港）、精簡專業、分點。\n\n個案類型：${type}\n個案描述：${desc}`;
+}
 async function consult(){
   const type=gv('cs_type'), desc=gv('cs_desc').trim();
   if(!desc)return;
-  const out=document.getElementById('csOut');if(out)out.innerHTML='<div class="muted">專家會診中…（多角度分析需時）</div>';
-  const sys=`你係 IS 專業導師團嘅「個案研討室」主持。根據個案，召集相關部門專家會診，畀結構化多角度分析。`
-    +`格式：①各相關專家觀點（標明專家身份，引用佢嘅權威來源/理論）②綜合建議（具體可行動）③風險 / 紅旗 / 需否轉介就醫 ④仲需要收集嘅資料。`
-    +`用繁體中文（香港）、精簡專業、分點。可調用嘅專家及權威來源：${fullFacultyDigest()}。`
-    +`個案主人嘅專業背景：${(KB.credentials||[]).filter(c=>c.status==='done').map(c=>c.name).join('、')}。個案類型：${type}。`;
-  try{
-    const j=await backendPost('chat',{messages:[{role:'user',content:'個案：'+desc}],system:sys});
-    if(j.ok){const cases=load('is_clinic',[]);cases.push({date:todayISO(),type,desc,reply:j.reply});save('is_clinic',cases);go('clinic');}
-    else if(out)out.innerHTML=`<div class="pill rest">❌ ${j.error||'失敗'}（檢查後端 + CLAUDE_API_KEY 設定）</div>`;
-  }catch(e){if(out)out.innerHTML=`<div class="pill rest">❌ ${e.message}</div>`}
+  await copyToProject(buildCasePrompt(type,desc),'csOut');
 }
 function facultyDigest(){
   const role=load('is_role','全部');
@@ -590,21 +641,9 @@ function chatContext(){
 }
 async function sendChat(){
   const inp=document.getElementById('chatInput');const text=inp.value.trim();if(!text)return;
-  const h=load('is_chat',[]);h.push({role:'user',text});save('is_chat',h);
-  inp.value='';document.getElementById('chatLog').innerHTML=renderChat()+'<div class="muted">教練團思考中…</div>';
-  const msgs=h.map(m=>({role:m.role,content:m.text}));
   const role=load('is_role','全部');
-  const sys=`你係一隊專業運動科學導師團（涵蓋運動表現/S&C、運動營養、徒手與軟組織治療、混合耐力體能）。`
-    +`你嘅角色係用戶嘅「導師」：除咗答問題，仲要教佢「點解」、引用佢進修過嘅相關專業框架（見背景嘅進修記錄與概念卡），適時反問或考佢，幫佢鞏固專業知識。`
-    +`當前身份焦點：${role}（運動員＝幫佢自己訓練；教練＝幫佢幫客戶出 program；治療師＝評估與手法）。`
-    +`若背景提到用戶想學英文：回答時適當穿插相關英文術語 / coaching cue（附中文），可教 1 個 coaching phrase，鼓勵佢用英文表達並溫和糾正佢英文。`
-    +`用繁體中文（香港）為主、精簡、可直接行動，必要時分點。背景：${chatContext()}`;
-  try{
-    const j=await backendPost('chat',{messages:msgs,system:sys});
-    if(j.ok){h.push({role:'assistant',text:j.reply});save('is_chat',h);}
-    else{h.push({role:'assistant',text:'⚠️ '+(j.error||'失敗')+'（檢查後端 + CLAUDE_API_KEY 設定）'});save('is_chat',h);}
-  }catch(e){h.push({role:'assistant',text:'⚠️ '+e.message});save('is_chat',h);}
-  document.getElementById('chatLog').innerHTML=renderChat();
+  const prompt=(role&&role!=='全部'?`（以${role}身份問）`:'')+text;
+  await copyToProject(prompt,'chatLog');
 }
 function saveBackend(){
   setBackend(gv('b_url'),gv('b_token'));
@@ -634,6 +673,17 @@ function lastEntry(name){
   }
   return null;
 }
+function suggestNext(name){
+  const ws=load('is_workouts',[]);
+  for(let i=ws.length-1;i>=0;i--){
+    const e=(ws[i].entries||[]).find(x=>x.name===name&&x.weight);
+    if(e){const wt=parseFloat(e.weight); if(isNaN(wt))return null;
+      if(/痛/.test(ws[i].body||'')||/痛/.test(ws[i].note||'')) return `🎯 上次有痛感 → 今次維持 ${wt}kg 或減，求無痛`;
+      return `🎯 試 ${+(wt+2.5).toFixed(1)}kg（狀態好/無痛先加，否則維持）`;
+    }
+  }
+  return null;
+}
 function selLogSess(v){save('is_logsess',v);render();}
 async function saveWorkout(){
   const sessions=(PLAN.blocks[curBlock()]||{}).sessions||[];
@@ -650,10 +700,20 @@ async function saveWorkout(){
 }
 function renderWorkoutHistory(ws){
   if(!ws.length)return '<div class="muted">未有記錄</div>';
-  return ws.slice(-10).reverse().map(w=>`<div class="logitem"><b>${w.date}</b> · ${w.session}
-    ${w.rpe?` · RPE ${w.rpe}`:''}${w.body&&w.body!=='都正常'?` · ${w.body}`:''}
-    ${w.entries.filter(e=>e.weight||e.reps).map(e=>`<br><span class="muted">${e.name}: ${e.weight?e.weight+'kg':''}${e.reps?' × '+e.reps:''}</span>`).join('')}
-    ${w.note?`<br><span class="hint">${w.note}</span>`:''}</div>`).join('');
+  const start=Math.max(0,ws.length-10);
+  return ws.slice(-10).map((w,j)=>({w,idx:start+j})).reverse().map(({w,idx})=>`<div class="logitem">
+    <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">
+      <div><b>${w.date}</b> · ${w.session}${w.rpe?` · RPE ${w.rpe}`:''}${w.body&&w.body!=='都正常'?` · ${w.body}`:''}</div>
+      <button class="act ghost" style="padding:2px 8px;font-size:12px;flex:none" onclick="deleteWorkout(${idx})">🗑</button>
+    </div>
+    ${w.entries.filter(e=>e.weight||e.reps).map(e=>`<span class="muted" style="display:block">${e.name}: ${e.weight?e.weight+'kg':''}${e.reps?' × '+e.reps:''}</span>`).join('')}
+    ${w.note?`<div class="hint">${w.note}</div>`:''}</div>`).join('');
+}
+async function deleteWorkout(idx){
+  if(!confirm('刪除呢筆訓練記錄？'))return;
+  const ws=load('is_workouts',[]); ws.splice(idx,1); save('is_workouts',ws);
+  if(backendCfg().url){try{await backendPost('put',{key:'workouts',value:ws})}catch(e){}}
+  render();
 }
 function buildReviewPrompt(w){
   const lines=(w.entries||[]).map(e=>{
@@ -667,24 +727,28 @@ async function reviewWorkout(){
   const ws=load('is_workouts',[]); const w=ws[ws.length-1];
   const o=document.getElementById('reviewOut');
   if(!w){if(o)o.innerHTML='<div class="pill rest">未有訓練記錄 — 先儲存今次訓練</div>';return}
-  const prompt=buildReviewPrompt(w); save('is_reviewprompt',prompt);
-  let copied=false; try{await navigator.clipboard.writeText(prompt);copied=true;}catch(e){}
-  if(o)o.innerHTML=renderReviewCopy(copied);
+  await copyToProject(buildReviewPrompt(w),'reviewOut');
 }
-function renderReviewCopy(copied){
-  const p=load('is_reviewprompt','');
-  return `<div class="pill ${copied?'go':'cut'}" style="display:inline-block">${copied?'✅ 今日訓練已複製到剪貼簿':'👇 長按下面方框全選複製'}</div>
-    <div class="muted" style="margin:8px 0">去 claude.ai 開你個「IS 導師團」Project → 貼上 → 就有 Opus 導師團點評。</div>
+// ===== 共用：複製 prompt → 開 claude.ai Project（全 app 唔使後端 key）=====
+async function copyToProject(text,elId){
+  save('is_copytext',text);
+  let ok=false; try{await navigator.clipboard.writeText(text);ok=true;}catch(e){}
+  const el=document.getElementById(elId); if(el)el.innerHTML=copyBox(ok);
+}
+function copyBox(ok){
+  const t=load('is_copytext','');
+  return `<div class="pill ${ok?'go':'cut'}" style="display:inline-block">${ok?'✅ 已複製到剪貼簿':'👇 長按下面方框全選複製'}</div>
+    <div class="muted" style="margin:8px 0">去 claude.ai 開你個「IS 導師團」Project → 貼上 → 就有 Opus 導師團回覆。</div>
     <div class="row" style="gap:8px;margin-bottom:8px">
-      <button class="act" style="flex:1" onclick="copyReview()">📋 再複製</button>
+      <button class="act" style="flex:1" onclick="recopy(this)">📋 再複製</button>
       <a class="act ghost" style="flex:1;text-align:center;text-decoration:none;line-height:1.6" href="https://claude.ai/projects" target="_blank" rel="noopener">🗣 開 claude.ai</a>
     </div>
-    <textarea readonly onclick="this.select()" style="width:100%;height:150px;font-size:12px;box-sizing:border-box">${(p||'').replace(/</g,'&lt;')}</textarea>`;
+    <textarea readonly onclick="this.select()" style="width:100%;height:150px;font-size:12px;box-sizing:border-box">${(t||'').replace(/</g,'&lt;')}</textarea>`;
 }
-async function copyReview(){
-  const p=load('is_reviewprompt','');
-  try{await navigator.clipboard.writeText(p);}catch(e){}
-  const ta=document.querySelector('#reviewOut textarea'); if(ta){ta.focus();ta.select();}
+async function recopy(btn){
+  const t=load('is_copytext','');
+  try{await navigator.clipboard.writeText(t);}catch(e){}
+  const box=btn.closest('div').parentNode, ta=box&&box.querySelector('textarea'); if(ta){ta.focus();ta.select();}
 }
 function renderLastReview(){
   const r=load('is_lastreview',null);
@@ -702,6 +766,7 @@ async function initToday(){
     if(lg.body_battery_high)setIf('r_bb',lg.body_battery_high);
   }
   const a=hrv7avg(daily);if(a)setIf('r_hrv7',a.toFixed(0));
+  try{calcReady()}catch(e){}   // 自動計今日建議，唔使撳
 }
 function setIf(id,v){const el=document.getElementById(id);if(el&&!el.value)el.value=v}
 
@@ -711,6 +776,12 @@ function impDaily(inp){const f=inp.files[0];if(!f)return;const rd=new FileReader
   rd.onload=e=>{save('is_daily',parseGarminCSV(e.target.result));initData();flash('garminOut','✅ daily_summary 已匯入')};rd.readAsText(f)}
 function flash(id,m){const el=document.getElementById(id);if(el)el.innerHTML=`<div class="pill go">${m}</div>`}
 
+function trReadi(g){
+  let tr=g&&g.training_readiness;
+  if(Array.isArray(tr))tr=tr[0];
+  if(tr&&typeof tr==='object'&&typeof tr.score==='number')return tr.score+(tr.level?` (${tr.level})`:'');
+  return null;
+}
 async function initData(){
   const g=await tryFetchGarmin(), daily=await tryFetchDaily();
   const d=lastGood(daily)||{};
@@ -720,6 +791,7 @@ async function initData(){
       <div class="metric"><div class="v">${d.hrv_overnight||'–'}</div><div class="l">HRV</div></div>
       <div class="metric"><div class="v">${d.sleep_hours||'–'}</div><div class="l">睡眠(h)</div></div>
       <div class="metric"><div class="v">${(g&&g.vo2max)||'–'}</div><div class="l">VO₂max</div></div></div>
+      ${trReadi(g)?`<div class="hint" style="color:var(--acc);margin-top:6px">🔋 訓練準備度：${trReadi(g)}</div>`:''}
       <div class="hint">最新數據：${d.date||'–'} ｜ 最後拉取：${(g&&g.pulled_at)||'–'}</div>`;
   }
   if(daily.length){
