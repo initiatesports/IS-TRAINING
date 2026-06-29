@@ -300,10 +300,10 @@ const VIEWS={
     </div>
     <div class="card">
       <h2>🗣 導師團點評今日訓練</h2>
-      <div class="muted">儲存後撳下面，導師團會評價今日表現（對比上次重量/RPE）+ 畀後續建議 + 下一課重點（需後端 + CLAUDE_API_KEY）。</div>
+      <div class="muted">儲存後撳下面 → 自動複製今日訓練 + 開 claude.ai，貼入你個「IS 導師團」Project 就有 Opus 點評（免費、唔使後端 key）。</div>
       <div style="height:8px"></div>
-      <button class="act ghost" onclick="reviewWorkout()">請導師團點評</button>
-      <div id="reviewOut" style="margin-top:10px">${renderLastReview()}</div>
+      <button class="act ghost" onclick="reviewWorkout()">📋 複製今日訓練 → 問導師團</button>
+      <div id="reviewOut" style="margin-top:10px"><div class="muted">練完撳上面，會複製一段現成 prompt，貼落 claude.ai 導師團 Project 即有點評。</div></div>
     </div>
     <div class="card">
       <h2>📚 最近訓練（${workouts.length}）</h2>
@@ -655,19 +655,36 @@ function renderWorkoutHistory(ws){
     ${w.entries.filter(e=>e.weight||e.reps).map(e=>`<br><span class="muted">${e.name}: ${e.weight?e.weight+'kg':''}${e.reps?' × '+e.reps:''}</span>`).join('')}
     ${w.note?`<br><span class="hint">${w.note}</span>`:''}</div>`).join('');
 }
+function buildReviewPrompt(w){
+  const lines=(w.entries||[]).map(e=>{
+    const v=`${e.weight?e.weight+'kg':''}${e.weight&&e.reps?' × ':''}${e.reps?e.reps:''}`.trim();
+    return `- ${e.name}${v?': '+v:(e.done?'：完成':'')}`;
+  }).join('\n');
+  return `請導師團點評我今日訓練：對比上次重量、顧住我嘅傷患、畀後續建議（下次重量/組數點調、下一課重點），可加 1 個英文 coaching cue（附中文）。\n\n`
+    +`日期：${w.date}\n課節：${w.session}\nRPE：${w.rpe||'?'}　身體：${w.body||'正常'}\n動作：\n${lines||'—'}\n備註：${w.note||'無'}`;
+}
 async function reviewWorkout(){
   const ws=load('is_workouts',[]); const w=ws[ws.length-1];
   const o=document.getElementById('reviewOut');
   if(!w){if(o)o.innerHTML='<div class="pill rest">未有訓練記錄 — 先儲存今次訓練</div>';return}
-  if(o)o.innerHTML='<div class="muted">導師團分析緊…</div>';
-  const det=(w.entries||[]).map(e=>`${e.name}: ${e.weight?e.weight+'kg':''}${e.reps?'×'+e.reps:''}${(e.done&&!e.weight&&!e.reps)?'(完成)':''}`).join('；');
-  const summary=`日期 ${w.date}、課節「${w.session}」、RPE ${w.rpe||'?'}、身體 ${w.body||'正常'}。動作:${det||'—'}。備註:${w.note||'無'}。`;
-  const sys=`你係用戶嘅運動科學導師團。佢啱練完一課，以下係今日記錄。請：①點評今日表現（有重量就對比「上次」、睇 RPE 同進度）②做得好 / 要注意（顧傷患）③具體後續建議（下次重量/組數點調、下一課重點）④一句鼓勵。用繁體中文（香港）、精簡分點、可穿插 1 個英文 coaching cue（附中文）。背景：${chatContext()}`;
-  try{
-    const j=await backendPost('chat',{messages:[{role:'user',content:'今日訓練記錄：'+summary}],system:sys});
-    if(j.ok){save('is_lastreview',{date:w.date,session:w.session,text:j.reply});if(o)o.innerHTML=renderLastReview();}
-    else if(o)o.innerHTML=`<div class="pill rest">❌ ${j.error||'失敗'}（需設定後端 + CLAUDE_API_KEY）</div>`;
-  }catch(e){if(o)o.innerHTML=`<div class="pill rest">❌ ${e.message}</div>`}
+  const prompt=buildReviewPrompt(w); save('is_reviewprompt',prompt);
+  let copied=false; try{await navigator.clipboard.writeText(prompt);copied=true;}catch(e){}
+  if(o)o.innerHTML=renderReviewCopy(copied);
+}
+function renderReviewCopy(copied){
+  const p=load('is_reviewprompt','');
+  return `<div class="pill ${copied?'go':'cut'}" style="display:inline-block">${copied?'✅ 今日訓練已複製到剪貼簿':'👇 長按下面方框全選複製'}</div>
+    <div class="muted" style="margin:8px 0">去 claude.ai 開你個「IS 導師團」Project → 貼上 → 就有 Opus 導師團點評。</div>
+    <div class="row" style="gap:8px;margin-bottom:8px">
+      <button class="act" style="flex:1" onclick="copyReview()">📋 再複製</button>
+      <a class="act ghost" style="flex:1;text-align:center;text-decoration:none;line-height:1.6" href="https://claude.ai/projects" target="_blank" rel="noopener">🗣 開 claude.ai</a>
+    </div>
+    <textarea readonly onclick="this.select()" style="width:100%;height:150px;font-size:12px;box-sizing:border-box">${(p||'').replace(/</g,'&lt;')}</textarea>`;
+}
+async function copyReview(){
+  const p=load('is_reviewprompt','');
+  try{await navigator.clipboard.writeText(p);}catch(e){}
+  const ta=document.querySelector('#reviewOut textarea'); if(ta){ta.focus();ta.select();}
 }
 function renderLastReview(){
   const r=load('is_lastreview',null);
