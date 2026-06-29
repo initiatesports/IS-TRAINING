@@ -80,8 +80,9 @@ const DEFAULT_PLAN = {
 };
 let PLAN = DEFAULT_PLAN;
 async function loadPlan(){
-  let p = load('is_plan', null);                         // 匯入過嘅本地計劃（localStorage）
-  if(!p){ try{const r=await fetch('./data/plan.json'); if(r.ok){p=await r.json(); save('is_plan',p)}}catch(e){} }
+  let p = null;
+  try{const r=await fetch('./data/plan.json?t='+Date.now()); if(r.ok){p=await r.json(); save('is_plan',p)}}catch(e){}  // 本機有檔→永遠用最新版
+  if(!p) p = load('is_plan', null);                      // 公開站/手機讀唔到檔→用匯入或雲端快取
   PLAN = p || DEFAULT_PLAN;
   PLAN.startDate = localStorage.getItem('is_start') || todayISO();
 }
@@ -89,8 +90,9 @@ async function loadPlan(){
 // ============ 知識庫（CPD / 概念 / 參考框架）============
 let KB = {owner:{}, credentials:[], reference:[], concepts:[], insights_pool:[]};
 async function loadKnowledge(){
-  let k = load('is_kb', null);
-  if(!k){ try{const r=await fetch('./data/knowledge.json'); if(r.ok){k=await r.json(); save('is_kb',k)}}catch(e){} }
+  let k = null;
+  try{const r=await fetch('./data/knowledge.json?t='+Date.now()); if(r.ok){k=await r.json(); save('is_kb',k)}}catch(e){}  // 本機有檔→永遠用最新版
+  if(!k) k = load('is_kb', null);
   if(k) KB = Object.assign({owner:{},credentials:[],reference:[],concepts:[],insights_pool:[]}, k);
 }
 function saveKB(){ save('is_kb',KB); if(backendCfg().url){backendPost('put',{key:'knowledge',value:KB}).catch(()=>{})} }
