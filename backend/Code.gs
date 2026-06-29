@@ -83,8 +83,8 @@ function doPost(e) {
       sheet_().getSheetByName(LOG_TAB).appendRow([s.date, s.type, s.dur, s.rpe, s.body, s.note]);
       return out_({ ok: true });
     }
-    if (b.action === 'chat') {         // Claude 即時對話
-      return out_(claudeChat_(b.messages || [], b.system || ''));
+    if (b.action === 'chat') {         // AI 即時對話（Gemini 免費 / Claude）
+      return out_(aiChat_(b.messages || [], b.system || ''));
     }
     return out_({ ok: false, error: 'unknown action' });
   } catch (err) { return out_({ ok: false, error: String(err) }); }
@@ -119,5 +119,36 @@ function claudeChat_(messages, system) {
   const data = JSON.parse(res.getContentText());
   if (data.error) return { ok: false, error: data.error.message || 'claude error' };
   const text = (data.content || []).map(c => c.text).join('\n');
+  return { ok: true, reply: text };
+}
+
+/** 揀 AI：有 GEMINI_API_KEY 就用免費 Gemini，否則用 Claude */
+function aiChat_(messages, system) {
+  if (PROP.getProperty('GEMINI_API_KEY')) return geminiChat_(messages, system);
+  if (PROP.getProperty('CLAUDE_API_KEY')) return claudeChat_(messages, system);
+  return { ok: false, error: '未設定 GEMINI_API_KEY 或 CLAUDE_API_KEY' };
+}
+
+/** Google Gemini（免費額度）proxy */
+function geminiChat_(messages, system) {
+  const key = PROP.getProperty('GEMINI_API_KEY');
+  const contents = (messages || []).map(function (m) {
+    return { role: (m.role === 'assistant' ? 'model' : 'user'), parts: [{ text: String(m.content || '') }] };
+  });
+  const res = UrlFetchApp.fetch(
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + encodeURIComponent(key),
+    {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      payload: JSON.stringify({
+        system_instruction: { parts: [{ text: system || '你係一隊專業運動科學導師團，用繁體中文（香港）、精簡、可行動咁回答。' }] },
+        contents: contents,
+        generationConfig: { maxOutputTokens: 1024, temperature: 0.7 }
+      })
+    });
+  const data = JSON.parse(res.getContentText());
+  if (data.error) return { ok: false, error: (data.error.message || 'gemini error') };
+  let text = '';
+  try { text = (data.candidates[0].content.parts || []).map(function (p) { return p.text; }).join('\n'); } catch (e) {}
+  if (!text) return { ok: false, error: 'Gemini 無回應（可能被安全過濾或額度用完）' };
   return { ok: true, reply: text };
 }
