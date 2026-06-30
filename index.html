@@ -259,7 +259,7 @@ const VIEWS={
       <h2>${i===cb?'▶ ':''}${b.wk} · ${b.name}${i===cb?' <span class="pill go" style="font-size:11px">本階段</span>':''}</h2>
       ${(b.sessions||[]).map(s=>`<div style="margin-bottom:10px">
         <div style="font-size:13px;font-weight:700;color:var(--acc);margin-bottom:4px">${s.title}</div>
-        ${(s.items||[]).map(e=>`<div class="ex">${e.n}${e.t?`<span class="tag">⚠${e.t}</span>`:''}</div>`).join('')}
+        ${(s.items||[]).map(e=>`<div class="ex">${e.n}${e.t?`<span class="tag">⚠${e.t}</span>`:''}${e.d?`<div class="hint" style="margin-top:3px">ℹ️ ${e.d}</div>`:''}</div>`).join('')}
       </div>`).join('')}
     </div>`).join('')}
     <div class="card muted">完整 12 週計劃全文（連營養/防傷/數據）喺本機 <b>docs/PLAN.md</b>。</div>`;
@@ -281,28 +281,34 @@ const VIEWS={
     </div>
     <div class="card">
       <h2>📋 ${sess.title}</h2>
-      <div class="muted" style="margin-bottom:6px">入今次重量／次數，下面「上次」會自動記住，方便加重。</div>
+      <div class="muted" style="margin-bottom:6px">逐組入重量／次數（每組一行，唔會再含糊「做咗幾組」）。ℹ️ 係做法／配速／休息提示。</div>
       ${(sess.items||[]).map((it,i)=>{
         const name=exerciseName(it.n);
         const last=lastEntry(name);
         const weighted=/\d+\s*×/.test(it.n);
+        const nSets=weighted?setsOf(it.n):0;
+        const lw=weighted?lastWeight(name):'';
         return `<div style="padding:10px 0;border-bottom:1px solid var(--line)">
           <div style="font-size:14px"><b>${it.n}</b>${it.t?`<span class="tag">⚠${it.t}</span>`:''}</div>
+          ${it.d?`<div class="hint" style="margin-top:3px">ℹ️ ${it.d}</div>`:''}
           ${last?`<div class="hint">📈 上次：${last}</div>`:''}
           ${weighted&&suggestNext(name)?`<div class="hint" style="color:var(--acc)">${suggestNext(name)}</div>`:''}
-          ${weighted?`<div class="row" style="margin-top:6px">
-            <input id="w_wt_${i}" type="number" inputmode="decimal" placeholder="重量 kg" style="flex:1">
-            <input id="w_rp_${i}" type="text" placeholder="次數 e.g. 6,6,5" style="flex:1">
-          </div>`:`<label style="margin-top:6px"><input type="checkbox" id="w_dn_${i}"> 完成（或填備註）</label>`}
+          ${weighted?Array.from({length:nSets},(_,s)=>`<div class="row" style="margin-top:6px;align-items:center;gap:6px">
+            <span class="hint" style="flex:none;width:30px">組${s+1}</span>
+            <input id="w_wt_${i}_${s}" type="number" inputmode="decimal" placeholder="${lw?lw+'kg':'kg'}" ${lw?`value="${lw}"`:''} style="flex:1">
+            <span class="hint" style="flex:none">×</span>
+            <input id="w_rp_${i}_${s}" type="number" inputmode="numeric" placeholder="次" style="flex:1">
+          </div>`).join(''):`<label style="margin-top:6px"><input type="checkbox" id="w_dn_${i}"> 完成（或填備註）</label>`}
         </div>`;
       }).join('')}
-      <div class="grid2" style="margin-top:10px">
-        <div><label>RPE（1–10）</label><input id="w_rpe" type="number" inputmode="numeric" min="1" max="10"></div>
+      <div class="grid2" style="margin-top:12px">
+        <div><label>RPE（1–10·可選）</label><input id="w_rpe" type="number" inputmode="numeric" min="1" max="10"></div>
         <div><label>身體狀態</label><select id="w_body"><option>都正常</option><option>部位繃緊</option><option>有痛感</option><option>頭痛</option><option>關節痛</option></select></div>
       </div>
-      <label>備註</label><textarea id="w_note" placeholder="感受、配速、痛感位…"></textarea>
-      <div style="height:10px"></div>
-      <button class="act" onclick="saveWorkout()">儲存今次訓練</button>
+      <label>備註（可選）</label><textarea id="w_note" placeholder="感受、配速、痛感位…"></textarea>
+    </div>
+    <div style="position:fixed;left:0;right:0;bottom:0;padding:10px 14px;background:linear-gradient(transparent,var(--bg) 35%);z-index:50">
+      <button class="act" style="width:100%;box-shadow:0 4px 16px rgba(0,0,0,.5)" onclick="saveWorkout()">💾 儲存今次訓練</button>
     </div>
     <div class="card">
       <h2>🗣 導師團點評今日訓練</h2>
@@ -665,11 +671,28 @@ function exerciseName(s){
   let n=m?m[1]:s;
   return n.replace(/[（(].*$/,'').trim();
 }
+function setsOf(s){const m=s.match(/(\d+)\s*×/);return m?Math.min(Math.max(parseInt(m[1]),1),8):1;}
+function lastWeight(name){
+  const ws=load('is_workouts',[]);
+  for(let i=ws.length-1;i>=0;i--){
+    const e=(ws[i].entries||[]).find(x=>x.name===name&&x.weight);
+    if(e)return e.weight;
+  }
+  return '';
+}
+function fmtEntry(e){
+  if(e.sets&&e.sets.length){
+    const w0=e.sets[0].w, same=e.sets.every(s=>s.w===w0);
+    if(same)return `${w0?w0+'kg':''}${w0?' × ':''}${e.sets.map(s=>s.r).join(',')}`;
+    return e.sets.map(s=>`${s.w||'?'}kg×${s.r||'?'}`).join('、');
+  }
+  return `${e.weight?e.weight+'kg':''}${e.reps?' × '+e.reps:''}`;
+}
 function lastEntry(name){
   const ws=load('is_workouts',[]);
   for(let i=ws.length-1;i>=0;i--){
-    const e=(ws[i].entries||[]).find(x=>x.name===name&&(x.weight||x.reps));
-    if(e)return `${e.weight?e.weight+'kg':''}${e.reps?' × '+e.reps:''} （${ws[i].date}）`;
+    const e=(ws[i].entries||[]).find(x=>x.name===name&&(x.weight||x.reps||(x.sets&&x.sets.length)));
+    if(e)return `${fmtEntry(e)} （${ws[i].date}）`;
   }
   return null;
 }
@@ -690,9 +713,22 @@ async function saveWorkout(){
   const sel=load('is_logsess',sessions[0]&&sessions[0].title);
   const sess=sessions.find(s=>s.title===sel)||sessions[0]||{items:[]};
   const entries=(sess.items||[]).map((it,i)=>{
-    const wt=document.getElementById('w_wt_'+i), rp=document.getElementById('w_rp_'+i), dn=document.getElementById('w_dn_'+i);
-    return {ex:it.n, name:exerciseName(it.n), weight:wt?wt.value:'', reps:rp?rp.value:'', done:dn?dn.checked:false};
-  }).filter(e=>e.weight||e.reps||e.done);
+    const name=exerciseName(it.n);
+    if(/\d+\s*×/.test(it.n)){
+      const sets=[];
+      for(let s=0;s<setsOf(it.n);s++){
+        const rp=document.getElementById('w_rp_'+i+'_'+s);
+        const r=rp&&rp.value!==''?rp.value:'';
+        if(r==='')continue;                 // 冇入次數 = 嗰組冇做
+        const wt=document.getElementById('w_wt_'+i+'_'+s);
+        sets.push({w:wt&&wt.value!==''?wt.value:'',r});
+      }
+      if(!sets.length)return null;
+      return {ex:it.n,name,sets,weight:sets[0].w,reps:sets.map(x=>x.r).join(',')};
+    }
+    const dn=document.getElementById('w_dn_'+i);
+    return dn&&dn.checked?{ex:it.n,name,done:true}:null;
+  }).filter(Boolean);
   const w={date:gv('w_date'),session:sess.title,entries,rpe:gv('w_rpe'),body:gv('w_body'),note:gv('w_note')};
   const ws=load('is_workouts',[]); ws.push(w); save('is_workouts',ws);
   if(backendCfg().url){try{await backendPost('put',{key:'workouts',value:ws})}catch(e){}}
@@ -706,7 +742,7 @@ function renderWorkoutHistory(ws){
       <div><b>${w.date}</b> · ${w.session}${w.rpe?` · RPE ${w.rpe}`:''}${w.body&&w.body!=='都正常'?` · ${w.body}`:''}</div>
       <button class="act ghost" style="padding:2px 8px;font-size:12px;flex:none" onclick="deleteWorkout(${idx})">🗑</button>
     </div>
-    ${w.entries.filter(e=>e.weight||e.reps).map(e=>`<span class="muted" style="display:block">${e.name}: ${e.weight?e.weight+'kg':''}${e.reps?' × '+e.reps:''}</span>`).join('')}
+    ${w.entries.filter(e=>e.weight||e.reps||(e.sets&&e.sets.length)).map(e=>`<span class="muted" style="display:block">${e.name}: ${fmtEntry(e)}</span>`).join('')}
     ${w.note?`<div class="hint">${w.note}</div>`:''}</div>`).join('');
 }
 async function deleteWorkout(idx){
