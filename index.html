@@ -281,7 +281,7 @@ const VIEWS={
     </div>
     <div class="card">
       <h2>📋 ${sess.title}</h2>
-      <div class="muted" style="margin-bottom:6px">逐組入重量／次數（每組一行，唔會再含糊「做咗幾組」）。ℹ️ 係做法／配速／休息提示。</div>
+      <div class="muted" style="margin-bottom:6px">力量：逐組入重量／次數。有氧／ESD：入時間／距離／平均心率。ℹ️ 係做法／配速／休息提示。</div>
       ${(sess.items||[]).map((it,i)=>{
         const name=exerciseName(it.n);
         const last=lastEntry(name);
@@ -298,7 +298,13 @@ const VIEWS={
             <input id="w_wt_${i}_${s}" type="number" inputmode="decimal" placeholder="${lw?lw+'kg':'kg'}" ${lw?`value="${lw}"`:''} style="flex:1">
             <span class="hint" style="flex:none">×</span>
             <input id="w_rp_${i}_${s}" type="number" inputmode="numeric" placeholder="次" style="flex:1">
-          </div>`).join(''):`<label style="margin-top:6px"><input type="checkbox" id="w_dn_${i}"> 完成（或填備註）</label>`}
+          </div>`).join('')
+          :isCardio(it.n)?`<div class="row" style="margin-top:6px;gap:6px">
+            <input id="w_dur_${i}" type="number" inputmode="decimal" placeholder="分鐘" style="flex:1">
+            <input id="w_dist_${i}" type="number" inputmode="decimal" placeholder="距離 m" style="flex:1">
+            <input id="w_hr_${i}" type="number" inputmode="numeric" placeholder="平均心率" style="flex:1">
+          </div>`
+          :`<label style="margin-top:6px"><input type="checkbox" id="w_dn_${i}"> 完成（或填備註）</label>`}
         </div>`;
       }).join('')}
       <div class="grid2" style="margin-top:12px">
@@ -672,6 +678,8 @@ function exerciseName(s){
   return n.replace(/[（(].*$/,'').trim();
 }
 function setsOf(s){const m=s.match(/(\d+)\s*×/);return m?Math.min(Math.max(parseInt(m[1]),1),8):1;}
+function isCardio(n){return /有氧|Compromised|Tempo|Zone ?2|threshold|站循環|Station Circuit|LSD|ESD|長 Zone|划船|\brow\b/i.test(n);}
+function hasData(e){return e.weight||e.reps||(e.sets&&e.sets.length)||e.dur||e.dist||e.hr;}
 function lastWeight(name){
   const ws=load('is_workouts',[]);
   for(let i=ws.length-1;i>=0;i--){
@@ -681,6 +689,7 @@ function lastWeight(name){
   return '';
 }
 function fmtEntry(e){
+  if(e.dur||e.dist||e.hr)return `${e.dur?e.dur+'分':''}${e.dist?' · '+e.dist+'m':''}${e.hr?' · HR '+e.hr:''}`;
   if(e.sets&&e.sets.length){
     const w0=e.sets[0].w, same=e.sets.every(s=>s.w===w0);
     if(same)return `${w0?w0+'kg':''}${w0?' × ':''}${e.sets.map(s=>s.r).join(',')}`;
@@ -691,7 +700,7 @@ function fmtEntry(e){
 function lastEntry(name){
   const ws=load('is_workouts',[]);
   for(let i=ws.length-1;i>=0;i--){
-    const e=(ws[i].entries||[]).find(x=>x.name===name&&(x.weight||x.reps||(x.sets&&x.sets.length)));
+    const e=(ws[i].entries||[]).find(x=>x.name===name&&hasData(x));
     if(e)return `${fmtEntry(e)} （${ws[i].date}）`;
   }
   return null;
@@ -726,6 +735,11 @@ async function saveWorkout(){
       if(!sets.length)return null;
       return {ex:it.n,name,sets,weight:sets[0].w,reps:sets.map(x=>x.r).join(',')};
     }
+    if(isCardio(it.n)){
+      const dur=document.getElementById('w_dur_'+i), dist=document.getElementById('w_dist_'+i), hr=document.getElementById('w_hr_'+i);
+      const D=dur&&dur.value!==''?dur.value:'', L=dist&&dist.value!==''?dist.value:'', H=hr&&hr.value!==''?hr.value:'';
+      return (D||L||H)?{ex:it.n,name,dur:D,dist:L,hr:H}:null;
+    }
     const dn=document.getElementById('w_dn_'+i);
     return dn&&dn.checked?{ex:it.n,name,done:true}:null;
   }).filter(Boolean);
@@ -742,7 +756,7 @@ function renderWorkoutHistory(ws){
       <div><b>${w.date}</b> · ${w.session}${w.rpe?` · RPE ${w.rpe}`:''}${w.body&&w.body!=='都正常'?` · ${w.body}`:''}</div>
       <button class="act ghost" style="padding:2px 8px;font-size:12px;flex:none" onclick="deleteWorkout(${idx})">🗑</button>
     </div>
-    ${w.entries.filter(e=>e.weight||e.reps||(e.sets&&e.sets.length)).map(e=>`<span class="muted" style="display:block">${e.name}: ${fmtEntry(e)}</span>`).join('')}
+    ${w.entries.filter(hasData).map(e=>`<span class="muted" style="display:block">${e.name}: ${fmtEntry(e)}</span>`).join('')}
     ${w.note?`<div class="hint">${w.note}</div>`:''}</div>`).join('');
 }
 async function deleteWorkout(idx){
@@ -753,7 +767,7 @@ async function deleteWorkout(idx){
 }
 function buildReviewPrompt(w){
   const lines=(w.entries||[]).map(e=>{
-    const v=`${e.weight?e.weight+'kg':''}${e.weight&&e.reps?' × ':''}${e.reps?e.reps:''}`.trim();
+    const v=hasData(e)&&!e.done?fmtEntry(e):'';
     return `- ${e.name}${v?': '+v:(e.done?'：完成':'')}`;
   }).join('\n');
   return `請導師團點評我今日訓練：對比上次重量、顧住我嘅傷患、畀後續建議（下次重量/組數點調、下一課重點），可加 1 個英文 coaching cue（附中文）。\n\n`
