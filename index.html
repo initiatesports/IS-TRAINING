@@ -299,10 +299,13 @@ const VIEWS={
             <span class="hint" style="flex:none">×</span>
             <input id="w_rp_${i}_${s}" type="number" inputmode="numeric" placeholder="次" style="flex:1">
           </div>`).join('')
-          :isCardio(it.n)?`<div class="row" style="margin-top:6px;gap:6px">
-            <input id="w_dur_${i}" type="number" inputmode="decimal" placeholder="分鐘" style="flex:1">
-            <input id="w_dist_${i}" type="number" inputmode="decimal" placeholder="距離 m" style="flex:1">
-            <input id="w_hr_${i}" type="number" inputmode="numeric" placeholder="平均心率" style="flex:1">
+          :isCardio(it.n)?`<div style="margin-top:6px">
+            <select id="w_mode_${i}" style="width:100%;margin-bottom:6px"><option value="">揀方式（row / ski / bike / run…）</option>${cardioModes(it.n).map(m=>`<option>${m}</option>`).join('')}</select>
+            <div class="row" style="gap:6px">
+              <input id="w_dur_${i}" type="number" inputmode="decimal" placeholder="分鐘" style="flex:1">
+              <input id="w_dist_${i}" type="number" inputmode="decimal" placeholder="距離 m" style="flex:1">
+              <input id="w_hr_${i}" type="number" inputmode="numeric" placeholder="平均心率" style="flex:1">
+            </div>
           </div>`
           :`<label style="margin-top:6px"><input type="checkbox" id="w_dn_${i}"> 完成（或填備註）</label>`}
         </div>`;
@@ -679,7 +682,12 @@ function exerciseName(s){
 }
 function setsOf(s){const m=s.match(/(\d+)\s*×/);return m?Math.min(Math.max(parseInt(m[1]),1),8):1;}
 function isCardio(n){return /有氧|Compromised|Tempo|Zone ?2|threshold|站循環|Station Circuit|LSD|ESD|長 Zone|划船|\brow\b/i.test(n);}
-function hasData(e){return e.weight||e.reps||(e.sets&&e.sets.length)||e.dur||e.dist||e.hr;}
+function cardioModes(n){
+  const base=['Row 划船','SkiErg','Bike 單車','Run 跑步','跳繩 Rope','其他'];
+  if(/跑|run|LSD|Tempo|threshold|sprint|衝刺/i.test(n))return ['Run 跑步',...base.filter(m=>!m.startsWith('Run'))];
+  return base;
+}
+function hasData(e){return e.weight||e.reps||(e.sets&&e.sets.length)||e.dur||e.dist||e.hr||e.mode;}
 function lastWeight(name){
   const ws=load('is_workouts',[]);
   for(let i=ws.length-1;i>=0;i--){
@@ -689,7 +697,10 @@ function lastWeight(name){
   return '';
 }
 function fmtEntry(e){
-  if(e.dur||e.dist||e.hr)return `${e.dur?e.dur+'分':''}${e.dist?' · '+e.dist+'m':''}${e.hr?' · HR '+e.hr:''}`;
+  if(e.dur||e.dist||e.hr||e.mode){
+    const p=[]; if(e.mode)p.push(e.mode); if(e.dur)p.push(e.dur+'分'); if(e.dist)p.push(e.dist+'m'); if(e.hr)p.push('HR '+e.hr);
+    return p.join(' · ');
+  }
   if(e.sets&&e.sets.length){
     const w0=e.sets[0].w, same=e.sets.every(s=>s.w===w0);
     if(same)return `${w0?w0+'kg':''}${w0?' × ':''}${e.sets.map(s=>s.r).join(',')}`;
@@ -736,9 +747,9 @@ async function saveWorkout(){
       return {ex:it.n,name,sets,weight:sets[0].w,reps:sets.map(x=>x.r).join(',')};
     }
     if(isCardio(it.n)){
-      const dur=document.getElementById('w_dur_'+i), dist=document.getElementById('w_dist_'+i), hr=document.getElementById('w_hr_'+i);
-      const D=dur&&dur.value!==''?dur.value:'', L=dist&&dist.value!==''?dist.value:'', H=hr&&hr.value!==''?hr.value:'';
-      return (D||L||H)?{ex:it.n,name,dur:D,dist:L,hr:H}:null;
+      const mode=document.getElementById('w_mode_'+i), dur=document.getElementById('w_dur_'+i), dist=document.getElementById('w_dist_'+i), hr=document.getElementById('w_hr_'+i);
+      const M=mode&&mode.value?mode.value:'', D=dur&&dur.value!==''?dur.value:'', L=dist&&dist.value!==''?dist.value:'', H=hr&&hr.value!==''?hr.value:'';
+      return (M||D||L||H)?{ex:it.n,name,mode:M,dur:D,dist:L,hr:H}:null;
     }
     const dn=document.getElementById('w_dn_'+i);
     return dn&&dn.checked?{ex:it.n,name,done:true}:null;
