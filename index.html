@@ -205,6 +205,7 @@ async function cloudPull(){
       if(j.store.workouts)save('is_workouts',j.store.workouts);
       if(j.store.bodyweight)save('is_bw',j.store.bodyweight);
       if(j.store.activities)save('is_activities',j.store.activities);
+      if(j.store.activity_details)save('is_actdetails',j.store.activity_details);
     }
     if(j.sessions)save('is_sessions',j.sessions);
   }
@@ -238,11 +239,67 @@ function fmtActivity(a){
   if(a.trainingEffectLabel)p.push(String(a.trainingEffectLabel).replace(/_/g,' '));
   return p.join(' · ');
 }
+function actDetails(){return load('is_actdetails',{})||{}}
+function lapPace(l){if(!l.dist||!l.dur)return '';const spk=l.dur/(l.dist/1000);if(spk<60||spk>1800)return '';
+  return `${Math.floor(spk/60)}:${String(Math.round(spk%60)).padStart(2,'0')}`;}
+const HRZ_COLOR={1:'#4a90ff',2:'#22d38a',3:'#f0c020',4:'#f0a020',5:'#ef5350'};
+function renderActDetail(a){
+  const d=actDetails()[String(a.activityId)];
+  if(!d)return '<div class="hint">未有逐段詳情——下次 garmin-sync 會拉呢次嘅分段／心率區。</div>';
+  let h='';
+  if(d.hrZones&&d.hrZones.length){
+    const tot=d.hrZones.reduce((s,z)=>s+(z.sec||0),0)||1;
+    h+='<div class="hint" style="margin:4px 0 4px">❤️ 心率區間</div>';
+    h+=d.hrZones.map(z=>{const p=Math.round((z.sec||0)/tot*100);
+      return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span class="hint" style="width:26px;flex:none">Z${z.z}</span>
+      <div style="flex:1;background:var(--card2);border-radius:4px;overflow:hidden"><div style="width:${p}%;height:12px;background:${HRZ_COLOR[z.z]||'var(--acc)'}"></div></div>
+      <span class="hint" style="width:78px;flex:none;text-align:right;font-family:var(--mono)">${fmtDur(z.sec)}·${p}%</span></div>`;}).join('');
+  }
+  if(d.laps&&d.laps.length){
+    h+='<div class="hint" style="margin:10px 0 4px">📊 分段</div>';
+    h+='<div style="overflow-x:auto"><table style="width:100%;font-size:12px;border-collapse:collapse;font-family:var(--mono)">'
+      +'<tr class="hint" style="text-align:left"><td style="padding:2px 6px">段</td><td>距離</td><td>時間</td><td>配速</td><td>HR</td></tr>'
+      +d.laps.map((l,i)=>`<tr style="border-top:1px solid var(--line)"><td style="padding:3px 6px">${i+1}</td>
+        <td>${l.dist?(l.dist/1000).toFixed(2)+'k':'—'}</td><td>${fmtDur(l.dur)}</td>
+        <td>${lapPace(l)?lapPace(l)+'/k':'—'}</td><td>${l.hr||'—'}${l.maxhr?'/'+l.maxhr:''}</td></tr>`).join('')
+      +'</table></div>';
+  }
+  return h||'<div class="hint">無分段資料</div>';
+}
+function toggleAct(id){const el=document.getElementById('actd_'+id);if(!el)return;
+  const open=el.style.display==='none';el.style.display=open?'block':'none';
+  const c=document.getElementById('actc_'+id);if(c)c.textContent=open?'▴':'▾';}
 function renderActivities(){
   const acts=garminActivities();
   if(!acts.length)return '<div class="muted">未有 Garmin 活動。喺 terminal 跑 <b>garmin-sync</b> 再由雲端拉取。</div>';
-  return acts.slice(0,15).map(a=>`<div class="ex"><b>${actType(a)}</b> <span class="hint">${actDate(a)}</span>
-    <div class="hint" style="margin-top:2px">${fmtActivity(a)}</div></div>`).join('');
+  const det=actDetails();
+  return acts.slice(0,15).map(a=>{const has=!!det[String(a.activityId)];
+    return `<div class="ex"><div style="cursor:pointer" onclick="toggleAct('${a.activityId}')">
+      <b>${actType(a)}</b> <span class="hint">${actDate(a)}</span>${has?` <span class="hint" id="actc_${a.activityId}">▾</span>`:''}
+      <div class="hint" style="margin-top:2px">${fmtActivity(a)}</div></div>
+      <div id="actd_${a.activityId}" style="display:none;margin-top:8px">${renderActDetail(a)}</div></div>`;}).join('');
+}
+// ===== 打卡：由 Garmin 帶入當日有氧活動 =====
+const GM_MODE={running:'run',treadmill_running:'run',trail_running:'run',track_running:'run',
+  cycling:'bike',indoor_cycling:'bike',road_biking:'bike',virtual_ride:'bike',
+  rowing:'row',indoor_rowing:'row',lap_swimming:'swim',open_water_swimming:'swim'};
+function garminCardioForDate(dateISO){
+  const acts=garminActivities().filter(a=>(a.startTimeLocal||'').slice(0,10)===dateISO&&a.duration);
+  return acts.sort((x,y)=>(y.duration||0)-(x.duration||0))[0]||null;
+}
+function fillCardioFromGarmin(i){
+  const dt=(document.getElementById('w_date')||{}).value||todayISO();
+  const a=garminCardioForDate(dt);
+  const h=document.getElementById('w_gm_'+i);
+  if(!a){if(h)h.innerHTML='<span class="pill cut" style="display:inline-block;margin-top:6px">當日冇 Garmin 活動（同步咗未？由雲端拉取試下）</span>';return;}
+  const setv=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null&&v!=='')el.value=v;};
+  setv('w_dur_'+i, a.duration?Math.round(a.duration/60):'');
+  setv('w_dist_'+i, a.distance?Math.round(a.distance):'');
+  setv('w_hr_'+i, a.averageHR?Math.round(a.averageHR):'');
+  const mode=GM_MODE[(a.activityType&&a.activityType.typeKey)||''];
+  if(mode){const sel=document.getElementById('w_mode_'+i);
+    if(sel)[...sel.options].forEach(o=>{if((o.value||o.textContent).toLowerCase()===mode)sel.value=o.value||o.textContent;});}
+  if(h)h.innerHTML=`<span class="pill go" style="display:inline-block;margin-top:6px">✅ 帶入 ${actType(a)}：${fmtActivity(a)}</span>`;
 }
 function parseGarminCSV(text){
   const lines=text.trim().split(/\r?\n/);const head=lines[0].split(',');
@@ -395,6 +452,8 @@ const VIEWS={
               <input id="w_dist_${i}" type="number" inputmode="decimal" placeholder="距離 m" style="flex:1">
               <input id="w_hr_${i}" type="number" inputmode="numeric" placeholder="平均心率" style="flex:1">
             </div>
+            <button class="ghost" style="width:auto;padding:6px 11px;font-size:12px;margin-top:7px;border-radius:8px" onclick="fillCardioFromGarmin(${i})">📲 由 Garmin 帶入當日活動</button>
+            <div id="w_gm_${i}"></div>
           </div>`
           :`<label style="margin-top:6px"><input type="checkbox" id="w_dn_${i}"> 完成（或填備註）</label>`}
           <input id="w_exnote_${i}" type="text" value="${(exNote(name)||'').replace(/"/g,'&quot;')}" placeholder="📝 備註：drop set(如 20×6+15×4) / 器械牌子 / pulley ratio…" style="margin-top:6px;font-size:12px;padding:7px 9px">
