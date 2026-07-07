@@ -157,11 +157,12 @@ function aiChat_(messages, system, maxTokens) {
 /** Google Gemini（免費額度）proxy */
 function geminiChat_(messages, system, maxTokens) {
   const key = PROP.getProperty('GEMINI_API_KEY');
+  const model = PROP.getProperty('GEMINI_MODEL') || 'gemini-2.5-flash';   // 可喺指令碼屬性換 model，唔使再部署
   const contents = (messages || []).map(function (m) {
     return { role: (m.role === 'assistant' ? 'model' : 'user'), parts: [{ text: String(m.content || '') }] };
   });
   const res = UrlFetchApp.fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + encodeURIComponent(key),
+    'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + encodeURIComponent(key),
     {
       method: 'post', contentType: 'application/json', muteHttpExceptions: true,
       payload: JSON.stringify({
