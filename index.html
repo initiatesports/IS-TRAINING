@@ -38,6 +38,13 @@
     font-size:15px;font-weight:700;cursor:pointer;width:100%}
   button.ghost{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .setrow{align-items:center;gap:6px}
+  @media(min-width:760px){
+    header,nav,main{max-width:880px;margin-left:auto;margin-right:auto}
+    main{padding:16px 22px 96px}
+    .setrow{max-width:400px}
+    #main .card>div[style*="fixed"]{max-width:880px;left:50%!important;transform:translateX(-50%)}
+  }
   .metric{background:var(--card2);border-radius:12px;padding:12px;text-align:center}
   .metric .v{font-size:22px;font-weight:800}
   .metric .l{font-size:11px;color:var(--mut);margin-top:2px}
@@ -293,11 +300,11 @@ const VIEWS={
           ${it.d?`<div class="hint" style="margin-top:3px">ℹ️ ${it.d}</div>`:''}
           ${last?`<div class="hint">📈 上次：${last}</div>`:''}
           ${weighted&&suggestNext(name)?`<div class="hint" style="color:var(--acc)">${suggestNext(name)}</div>`:''}
-          ${weighted?Array.from({length:nSets},(_,s)=>`<div class="row" style="margin-top:6px;align-items:center;gap:6px">
+          ${weighted?Array.from({length:nSets},(_,s)=>`<div class="row setrow" style="margin-top:6px">
             <span class="hint" style="flex:none;width:30px">組${s+1}</span>
-            <input id="w_wt_${i}_${s}" type="number" inputmode="decimal" placeholder="${lw?lw+'kg':'kg'}" ${lw?`value="${lw}"`:''} style="flex:1">
+            <input id="w_wt_${i}_${s}" type="number" inputmode="decimal" placeholder="${lw?lw+'kg':'kg'}" ${lw?`value="${lw}" data-auto="1"`:''} oninput="propSet(${i},${s},'wt')" style="flex:1">
             <span class="hint" style="flex:none">×</span>
-            <input id="w_rp_${i}_${s}" type="number" inputmode="numeric" placeholder="次" style="flex:1">
+            <input id="w_rp_${i}_${s}" type="number" inputmode="numeric" placeholder="次" oninput="propSet(${i},${s},'rp')" style="flex:1">
           </div>`).join('')
           :isCardio(it.n)?`<div style="margin-top:6px">
             <select id="w_mode_${i}" style="width:100%;margin-bottom:6px"><option value="">揀方式（row / ski / bike / run…）</option>${cardioModes(it.n).map(m=>`<option>${m}</option>`).join('')}</select>
@@ -681,6 +688,17 @@ function exerciseName(s){
   return n.replace(/[（(].*$/,'').trim();
 }
 function setsOf(s){const m=s.match(/(\d+)\s*×/);return m?Math.min(Math.max(parseInt(m[1]),1),8):1;}
+// 打第一組後，自動預設之後嘅組一樣（後面仲係空/自動嗰啲先跟；你親手改咗嗰組就停）
+function propSet(i,s,f){
+  const src=document.getElementById('w_'+f+'_'+i+'_'+s); if(!src)return;
+  src.dataset.auto='';                     // 呢格＝你親手輸入
+  const v=src.value;
+  for(let k=s+1;;k++){
+    const el=document.getElementById('w_'+f+'_'+i+'_'+k); if(!el)break;
+    if(el.value===''||el.dataset.auto==='1'){ el.value=v; el.dataset.auto='1'; }
+    else break;
+  }
+}
 function isCardio(n){return /有氧|Compromised|Tempo|Zone ?2|threshold|站循環|Station Circuit|LSD|ESD|長 Zone|划船|\brow\b/i.test(n);}
 function cardioModes(n){
   const base=['Row 划船','SkiErg','Bike 單車','Run 跑步','跳繩 Rope','其他'];
