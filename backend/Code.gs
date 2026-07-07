@@ -43,6 +43,12 @@ function setup() {
   return msg;
 }
 
+/** 喺編輯器手動 Run 一次：授權 Gmail 發送權限 + 寄一封測試點評俾你，確認 email 通。 */
+function sendTestReview() {
+  mailReview_('🏋️ 導師團點評 · 測試', '呢個係測試 email。收到就代表打卡自動點評會 email 到呢個地址 ✅');
+  return '✅ 已寄測試 email，請查收。';
+}
+
 function out_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
