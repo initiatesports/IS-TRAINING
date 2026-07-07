@@ -204,10 +204,45 @@ async function cloudPull(){
       if(j.store.knowledge){save('is_kb',j.store.knowledge);KB=Object.assign(KB,j.store.knowledge);}
       if(j.store.workouts)save('is_workouts',j.store.workouts);
       if(j.store.bodyweight)save('is_bw',j.store.bodyweight);
+      if(j.store.activities)save('is_activities',j.store.activities);
     }
     if(j.sessions)save('is_sessions',j.sessions);
   }
   return j;
+}
+// ===== Garmin 活動（每次運動）=====
+function garminActivities(){
+  const a=load('is_activities',null);
+  if(a&&a.length)return a;
+  const g=load('is_garmin',null);
+  return (g&&g.recent_activities)||[];
+}
+const ACT_TYPE={running:'跑步',treadmill_running:'跑步機',trail_running:'越野跑',track_running:'田徑跑',
+  cycling:'單車',indoor_cycling:'室內單車',road_biking:'公路單車',virtual_ride:'虛擬單車',
+  lap_swimming:'游水',open_water_swimming:'公開水域',strength_training:'重訓',indoor_cardio:'室內有氧',
+  cardio:'有氧',hiit:'HIIT',walking:'步行',hiking:'行山',elliptical:'橢圓機',rowing:'划船',
+  indoor_rowing:'室內划船',yoga:'瑜伽',jump_rope:'跳繩',other:'其他',multi_sport:'多項'};
+function actType(a){const k=(a.activityType&&a.activityType.typeKey)||'';return ACT_TYPE[k]||a.activityName||k||'活動';}
+function actDate(a){return (a.startTimeLocal||'').replace('T',' ').slice(0,16);}
+function fmtDur(s){s=Math.round(s||0);const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;
+  return h?`${h}h${String(m).padStart(2,'0')}m`:`${m}分${ss?String(ss).padStart(2,'0')+'秒':''}`;}
+function actPace(a){if(!a.distance||!a.duration)return '';
+  const spk=a.duration/(a.distance/1000);if(spk<60||spk>1200)return '';
+  return `${Math.floor(spk/60)}:${String(Math.round(spk%60)).padStart(2,'0')}/km`;}
+function fmtActivity(a){
+  const p=[]; if(a.distance>50)p.push((a.distance/1000).toFixed(2)+'km');
+  if(a.duration)p.push(fmtDur(a.duration));
+  const pc=actPace(a); if(pc)p.push(pc);
+  if(a.averageHR)p.push('HR '+Math.round(a.averageHR)+(a.maxHR?'/'+Math.round(a.maxHR):''));
+  if(a.calories)p.push(Math.round(a.calories)+'kcal');
+  if(a.trainingEffectLabel)p.push(String(a.trainingEffectLabel).replace(/_/g,' '));
+  return p.join(' · ');
+}
+function renderActivities(){
+  const acts=garminActivities();
+  if(!acts.length)return '<div class="muted">未有 Garmin 活動。喺 terminal 跑 <b>garmin-sync</b> 再由雲端拉取。</div>';
+  return acts.slice(0,15).map(a=>`<div class="ex"><b>${actType(a)}</b> <span class="hint">${actDate(a)}</span>
+    <div class="hint" style="margin-top:2px">${fmtActivity(a)}</div></div>`).join('');
 }
 function parseGarminCSV(text){
   const lines=text.trim().split(/\r?\n/);const head=lines[0].split(',');
@@ -224,7 +259,7 @@ function hrv7avg(rows){
 }
 
 // ============ Views ============
-const TABS=[["today","今日"],["plan","訓練"],["nutrition","營養"],["knowledge","知識"],["coachTools","教練"],["therapy","治療"],["faculty","導師團"],["clinic","研討室"],["log","打卡"],["data","數據"]];
+const TABS=[["today","今日"],["plan","訓練"],["log","打卡"],["nutrition","營養"],["knowledge","知識"],["coachTools","教練"],["therapy","治療"],["faculty","導師團"],["clinic","研討室"],["data","數據"]];
 let tab="today";
 function render(){
   document.getElementById('subhead').textContent=PLAN.empty?'個人訓練系統':`第 ${curWeek()} 週 / 12　·　${PLAN.goal||''}`;
@@ -394,6 +429,11 @@ const VIEWS={
       <label>匯入 garmin_latest.json</label><input type="file" id="f_latest" accept=".json" onchange="impLatest(this)">
       <label>匯入 daily_summary.csv</label><input type="file" id="f_daily" accept=".csv" onchange="impDaily(this)">
       <div id="garminOut" style="margin-top:12px"></div>
+    </div>
+    <div class="card">
+      <h2>🏃 最近 Garmin 活動</h2>
+      <div class="muted" style="margin-bottom:8px">每次運動自動由 Garmin 讀（距離／時長／心率／配速／訓練效果）—— 唔使截圖。</div>
+      ${renderActivities()}
     </div>
     <div class="card">
       <h2>📈 HRV 趨勢（近 14 日）</h2>
@@ -704,6 +744,7 @@ function chatContext(){
   return (PLAN.empty?'':`自身訓練目標：${PLAN.goal}。現處第 ${curWeek()} 週（${b.wk} ${b.name}：${b.focus||''}）。`)
     +(daily.length?`今日 readiness：${r.status}。最新：靜息心率 ${lg.resting_hr||'?'}、HRV ${lg.hrv_overnight||'?'}、睡 ${lg.sleep_hours||'?'}h。`:'')
     +(ws.length?`近期訓練(含重量,寫計劃用)：${ws.map(w=>w.date+' '+w.session+'：'+w.entries.filter(e=>e.weight).map(e=>e.name+' '+e.weight+'kg×'+(e.reps||'')).join('、')+(w.body&&w.body!=='都正常'?'['+w.body+']':'')).join('；')}。`:'')
+    +((garminActivities()||[]).length?`最近 Garmin 活動(真實數據,點評時引用)：${garminActivities().slice(0,6).map(a=>actType(a)+' '+actDate(a)+' '+fmtActivity(a)).join('；')}。`:'')
     +(creds?`我嘅專業進修：${creds}。`:'')
     +(recent?`近期概念卡：${recent}。`:'')
     +(KB.faculty&&KB.faculty.length?`可調用嘅專家及其權威來源（回答時引用對應專家同來源）：${facultyDigest()}。`:'')
