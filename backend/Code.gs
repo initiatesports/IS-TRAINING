@@ -84,7 +84,16 @@ function doPost(e) {
       return out_({ ok: true });
     }
     if (b.action === 'chat') {         // AI 即時對話（Gemini 免費 / Claude）
-      return out_(aiChat_(b.messages || [], b.system || ''));
+      return out_(aiChat_(b.messages || [], b.system || '', b.maxTokens || 1024));
+    }
+    if (b.action === 'review') {       // 導師團點評今次訓練 → 生成 + email 俾老闆
+      const msgs = b.messages || [{ role: 'user', content: b.prompt || '' }];
+      const r = aiChat_(msgs, b.system || REVIEW_SYSTEM_, b.maxTokens || 2000);
+      if (r.ok && r.reply && b.email !== false) {
+        try { mailReview_(b.subject || '🏋️ 導師團點評', r.reply); r.emailed = true; }
+        catch (e) { r.emailed = false; r.emailError = String(e); }
+      }
+      return out_(r);
     }
     return out_({ ok: false, error: 'unknown action' });
   } catch (err) { return out_({ ok: false, error: String(err) }); }
@@ -100,8 +109,18 @@ function putStore_(key, value) {
   sh.appendRow([key, json, new Date()]);
 }
 
+const REVIEW_SYSTEM_ = '你係 IS 導師團（S&C 教練、物理治療、運動營養、表現心理、動作學習等專家）。點評老闆今次訓練：對比上次重量、顧住佢傷患（右膕繩/右腰/右踝背屈/前臂）、畀後續建議（下次重量/組數點調、下一課重點），可加 1 個英文 coaching cue（附中文）。用繁體中文（香港）、精簡專業、分點、可直接行動。';
+
+/** email 點評俾老闆（送去 script 擁有人 = 老闆自己嘅 Gmail；OWNER_EMAIL 可覆寫。唔使密碼） */
+function mailReview_(subject, body) {
+  let to = PROP.getProperty('OWNER_EMAIL');
+  if (!to) { try { to = Session.getEffectiveUser().getEmail(); } catch (e) {} }
+  if (!to) throw new Error('搵唔到收件 email（請喺指令碼屬性加 OWNER_EMAIL）');
+  MailApp.sendEmail({ to: to, subject: subject, body: body, name: 'IS 導師團' });
+}
+
 /** Claude API proxy（key 只留後端） */
-function claudeChat_(messages, system) {
+function claudeChat_(messages, system, maxTokens) {
   const key = PROP.getProperty('CLAUDE_API_KEY');
   if (!key) return { ok: false, error: '未設定 CLAUDE_API_KEY' };
   const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
@@ -111,7 +130,7 @@ function claudeChat_(messages, system) {
     headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
     payload: JSON.stringify({
       model: 'claude-opus-4-8',
-      max_tokens: 1024,
+      max_tokens: maxTokens || 1024,
       system: system || '你係一隊專業運動科學教練團（S&C、運動營養、物理治療、體能）。用繁體中文（香港）、精簡、可行動咁回答。',
       messages: messages
     })
@@ -123,14 +142,14 @@ function claudeChat_(messages, system) {
 }
 
 /** 揀 AI：有 GEMINI_API_KEY 就用免費 Gemini，否則用 Claude */
-function aiChat_(messages, system) {
-  if (PROP.getProperty('GEMINI_API_KEY')) return geminiChat_(messages, system);
-  if (PROP.getProperty('CLAUDE_API_KEY')) return claudeChat_(messages, system);
+function aiChat_(messages, system, maxTokens) {
+  if (PROP.getProperty('GEMINI_API_KEY')) return geminiChat_(messages, system, maxTokens);
+  if (PROP.getProperty('CLAUDE_API_KEY')) return claudeChat_(messages, system, maxTokens);
   return { ok: false, error: '未設定 GEMINI_API_KEY 或 CLAUDE_API_KEY' };
 }
 
 /** Google Gemini（免費額度）proxy */
-function geminiChat_(messages, system) {
+function geminiChat_(messages, system, maxTokens) {
   const key = PROP.getProperty('GEMINI_API_KEY');
   const contents = (messages || []).map(function (m) {
     return { role: (m.role === 'assistant' ? 'model' : 'user'), parts: [{ text: String(m.content || '') }] };
@@ -142,7 +161,7 @@ function geminiChat_(messages, system) {
       payload: JSON.stringify({
         system_instruction: { parts: [{ text: system || '你係一隊專業運動科學導師團，用繁體中文（香港）、精簡、可行動咁回答。' }] },
         contents: contents,
-        generationConfig: { maxOutputTokens: 1024, temperature: 0.7 }
+        generationConfig: { maxOutputTokens: maxTokens || 1024, temperature: 0.7 }
       })
     });
   const data = JSON.parse(res.getContentText());

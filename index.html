@@ -6,72 +6,100 @@
 <title>IS-TRAINING · 我的訓練系統</title>
 <style>
   :root{
-    --bg:#0e1116; --card:#171c24; --card2:#1f2630; --line:#2a323d;
-    --txt:#e7edf3; --mut:#8a97a6; --acc:#19c37d; --warn:#f0a020; --bad:#ef5350; --good:#19c37d;
-    --blue:#3b82f6;
+    --bg:#0b0e13; --bg2:#0e131a; --card:#161c26; --card2:#1e2633; --line:#2b3441;
+    --txt:#eef3f8; --mut:#93a1b2; --acc:#22d38a; --acc2:#12a86b;
+    --warn:#f0a020; --bad:#ef5350; --good:#22d38a; --blue:#4a90ff;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.28);
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:-apple-system,"PingFang HK","Helvetica Neue",sans-serif;
-    background:var(--bg);color:var(--txt);-webkit-tap-highlight-color:transparent}
-  header{padding:18px 16px 8px;position:sticky;top:0;background:linear-gradient(var(--bg),rgba(14,17,22,.92));z-index:5}
-  h1{font-size:18px;margin:0;letter-spacing:.5px}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"PingFang HK","Helvetica Neue",sans-serif;
+    background:var(--bg);color:var(--txt);-webkit-tap-highlight-color:transparent;line-height:1.5;
+    background-image:radial-gradient(120% 60% at 50% -10%,rgba(34,211,138,.10),transparent 60%);
+    background-attachment:fixed}
+  /* ---- header ---- */
+  header{padding:16px 16px 10px;position:sticky;top:0;z-index:10;
+    background:linear-gradient(180deg,var(--bg) 55%,rgba(11,14,19,.85));backdrop-filter:blur(8px)}
+  h1{font-size:17px;margin:0;letter-spacing:1.5px;font-weight:800;display:flex;align-items:center;gap:2px}
   h1 span{color:var(--acc)}
-  .sub{color:var(--mut);font-size:12px;margin-top:3px}
-  nav{display:flex;gap:4px;overflow-x:auto;padding:8px 12px 0;position:sticky;top:0}
-  nav button{flex:0 0 auto;background:none;border:none;color:var(--mut);font-size:14px;
-    padding:8px 12px;border-radius:10px 10px 0 0;cursor:pointer;font-weight:600}
-  nav button.active{color:var(--txt);background:var(--card)}
-  main{padding:14px 14px 90px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
-  .card h2{font-size:15px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  h1::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--acc);
+    box-shadow:0 0 10px var(--acc);margin-right:8px;flex:none}
+  .sub{color:var(--mut);font-size:12px;margin-top:5px;font-weight:500}
+  #wkbar{height:4px;border-radius:999px;background:var(--card2);margin-top:10px;overflow:hidden;display:none}
+  #wkbar>i{display:block;height:100%;background:linear-gradient(90deg,var(--acc2),var(--acc));border-radius:999px;transition:width .5s}
+  /* ---- nav (segmented pills) ---- */
+  nav{display:flex;gap:6px;overflow-x:auto;padding:6px 12px 12px;position:sticky;top:0;z-index:9;
+    scrollbar-width:none;-ms-overflow-style:none}
+  nav::-webkit-scrollbar{display:none}
+  nav button{flex:0 0 auto;background:var(--card);border:1px solid transparent;color:var(--mut);font-size:13.5px;
+    padding:8px 15px;border-radius:999px;cursor:pointer;font-weight:600;transition:.18s;white-space:nowrap}
+  nav button:hover{color:var(--txt)}
+  nav button.active{color:#05140d;background:linear-gradient(180deg,var(--acc),var(--acc2));
+    border-color:var(--acc);box-shadow:0 4px 14px rgba(34,211,138,.28);font-weight:800}
+  main{padding:6px 14px 96px}
+  /* ---- cards ---- */
+  .card{background:linear-gradient(180deg,var(--card),var(--bg2));border:1px solid var(--line);
+    border-radius:18px;padding:18px;margin-bottom:14px;box-shadow:var(--shadow)}
+  .card h2{font-size:15px;margin:0 0 14px;display:flex;align-items:center;gap:8px;font-weight:700;letter-spacing:.2px}
   .muted{color:var(--mut);font-size:13px}
+  .msg{font-size:14px;line-height:1.6}
   .row{display:flex;gap:10px;flex-wrap:wrap}
-  .pill{border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700}
-  .pill.go{background:rgba(25,195,125,.15);color:var(--good)}
-  .pill.cut{background:rgba(240,160,32,.15);color:var(--warn)}
-  .pill.rest{background:rgba(239,83,80,.15);color:var(--bad)}
-  label{display:block;font-size:12px;color:var(--mut);margin:10px 0 4px}
+  .pill{border-radius:999px;padding:5px 12px;font-size:12px;font-weight:700;letter-spacing:.2px}
+  .pill.go{background:rgba(34,211,138,.16);color:var(--good);box-shadow:inset 0 0 0 1px rgba(34,211,138,.25)}
+  .pill.cut{background:rgba(240,160,32,.16);color:var(--warn);box-shadow:inset 0 0 0 1px rgba(240,160,32,.25)}
+  .pill.rest{background:rgba(239,83,80,.16);color:var(--bad);box-shadow:inset 0 0 0 1px rgba(239,83,80,.25)}
+  label{display:block;font-size:12px;color:var(--mut);margin:12px 0 5px;font-weight:600}
   input,select,textarea{width:100%;background:var(--card2);border:1px solid var(--line);
-    color:var(--txt);border-radius:10px;padding:10px;font-size:15px;font-family:inherit}
-  textarea{min-height:64px;resize:vertical}
-  button.act{background:var(--acc);color:#04150d;border:none;border-radius:10px;padding:12px 16px;
-    font-size:15px;font-weight:700;cursor:pointer;width:100%}
-  button.ghost{background:var(--card2);color:var(--txt);border:1px solid var(--line)}
+    color:var(--txt);border-radius:11px;padding:11px 12px;font-size:15px;font-family:inherit;transition:.15s;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(34,211,138,.15)}
+  input[type=number]{font-family:var(--mono)}
+  textarea{min-height:64px;resize:vertical;line-height:1.5}
+  button{font-family:inherit}
+  button.act{background:linear-gradient(180deg,var(--acc),var(--acc2));color:#05140d;border:none;border-radius:12px;
+    padding:13px 16px;font-size:15px;font-weight:800;cursor:pointer;width:100%;letter-spacing:.3px;
+    box-shadow:0 4px 14px rgba(34,211,138,.25);transition:.15s}
+  button.act:hover{filter:brightness(1.06)}
+  button.act:active{transform:translateY(1px);box-shadow:0 2px 8px rgba(34,211,138,.2)}
+  button.ghost{background:var(--card2);color:var(--txt);border:1px solid var(--line);box-shadow:none;font-weight:700}
+  button.ghost:hover{border-color:var(--acc);color:var(--acc)}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .setrow{align-items:center;gap:6px}
   @media(min-width:760px){
-    header,nav,main{max-width:880px;margin-left:auto;margin-right:auto}
-    main{padding:16px 22px 96px}
-    .setrow{max-width:400px}
-    #main .card>div[style*="fixed"]{max-width:880px;left:50%!important;transform:translateX(-50%)}
+    header,nav,main{max-width:900px;margin-left:auto;margin-right:auto}
+    main{padding:8px 22px 96px}
+    .setrow{max-width:420px}
+    #main .card>div[style*="fixed"]{max-width:900px;left:50%!important;transform:translateX(-50%)}
   }
-  .metric{background:var(--card2);border-radius:12px;padding:12px;text-align:center}
-  .metric .v{font-size:22px;font-weight:800}
-  .metric .l{font-size:11px;color:var(--mut);margin-top:2px}
-  .big{font-size:30px;font-weight:800;letter-spacing:.5px}
-  .phase{border-left:3px solid var(--line);padding:4px 0 4px 12px;margin:8px 0}
+  .metric{background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px 12px;text-align:center}
+  .metric .v{font-size:24px;font-weight:800;font-family:var(--mono);letter-spacing:-.5px}
+  .metric .l{font-size:11px;color:var(--mut);margin-top:3px;font-weight:600}
+  .big{font-size:31px;font-weight:800;letter-spacing:.3px;line-height:1.15}
+  .phase{border-left:3px solid var(--line);padding:5px 0 5px 13px;margin:9px 0}
   .phase.cur{border-color:var(--acc)}
   .phase b{font-size:14px}
-  .ex{padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .ex{padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
   .ex:last-child{border:none}
-  .tag{font-size:10px;padding:2px 6px;border-radius:6px;background:var(--card2);color:var(--warn);margin-left:6px}
-  .coach{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .tag{font-size:10px;padding:2px 7px;border-radius:6px;background:rgba(240,160,32,.14);color:var(--warn);margin-left:6px;font-weight:700}
+  .coach{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
   .coach:last-child{border:none}
-  .coach .ico{font-size:22px}
-  .coach .msg{font-size:14px;line-height:1.5}
-  .coach .who{font-size:12px;color:var(--mut);font-weight:700;margin-bottom:2px}
-  .logitem{font-size:13px;padding:8px 0;border-bottom:1px solid var(--line)}
-  .spark{display:flex;align-items:flex-end;gap:3px;height:46px;margin-top:6px}
-  .spark span{flex:1;background:var(--blue);border-radius:2px 2px 0 0;min-height:2px;opacity:.85}
-  .hint{font-size:11px;color:var(--mut);margin-top:6px}
-  .warnbox{background:rgba(240,160,32,.1);border:1px solid rgba(240,160,32,.3);border-radius:10px;padding:10px;font-size:13px;margin-top:8px}
+  .coach .ico{font-size:22px;flex:none}
+  .coach .msg{font-size:14px;line-height:1.55}
+  .coach .who{font-size:12px;color:var(--mut);font-weight:700;margin-bottom:3px}
+  .logitem{font-size:13px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .logitem:last-child{border:none}
+  .spark{display:flex;align-items:flex-end;gap:3px;height:48px;margin-top:8px}
+  .spark span{flex:1;background:linear-gradient(180deg,var(--blue),rgba(74,144,255,.4));border-radius:3px 3px 0 0;min-height:2px}
+  .hint{font-size:11.5px;color:var(--mut);margin-top:6px;line-height:1.5}
+  .warnbox{background:rgba(240,160,32,.1);border:1px solid rgba(240,160,32,.3);border-radius:12px;padding:11px;font-size:13px;margin-top:8px}
   .hidden{display:none}
 </style>
 </head>
 <body>
 <header>
-  <h1>IS·<span>TRAINING</span></h1>
+  <h1>IS<span>TRAINING</span></h1>
   <div class="sub" id="subhead">個人訓練系統</div>
+  <div id="wkbar"><i style="width:0"></i></div>
 </header>
 <nav id="nav"></nav>
 <main id="main"></main>
@@ -182,7 +210,9 @@ function hrv7avg(rows){
 const TABS=[["today","今日"],["plan","訓練"],["nutrition","營養"],["knowledge","知識"],["coachTools","教練"],["therapy","治療"],["faculty","導師團"],["clinic","研討室"],["log","打卡"],["data","數據"]];
 let tab="today";
 function render(){
-  document.getElementById('subhead').textContent=PLAN.goal||'個人訓練系統';
+  document.getElementById('subhead').textContent=PLAN.empty?'個人訓練系統':`第 ${curWeek()} 週 / 12　·　${PLAN.goal||''}`;
+  const wb=document.getElementById('wkbar');
+  if(wb){wb.style.display=PLAN.empty?'none':'block';const bar=wb.querySelector('i');if(bar)bar.style.width=(curWeek()/12*100).toFixed(1)+'%';}
   document.getElementById('nav').innerHTML=TABS.map(([k,n])=>
     `<button class="${k===tab?'active':''}" onclick="go('${k}')">${n}</button>`).join('');
   document.getElementById('main').innerHTML=VIEWS[tab]();
@@ -328,11 +358,11 @@ const VIEWS={
       <button class="act" style="width:100%;box-shadow:0 4px 16px rgba(0,0,0,.5)" onclick="saveWorkout()">💾 儲存今次訓練</button>
     </div>
     <div class="card">
-      <h2>🗣 導師團點評今日訓練</h2>
-      <div class="muted">儲存後撳下面 → 自動複製今日訓練 + 開 claude.ai，貼入你個「IS 導師團」Project 就有 Opus 點評（免費、唔使後端 key）。</div>
-      <div style="height:8px"></div>
-      <button class="act ghost" onclick="reviewWorkout()">📋 複製今日訓練 → 問導師團</button>
-      <div id="reviewOut" style="margin-top:10px"><div class="muted">練完撳上面，會複製一段現成 prompt，貼落 claude.ai 導師團 Project 即有點評。</div></div>
+      <h2>🗣 導師團點評</h2>
+      <div class="muted">儲存後自動叫導師團點評今次訓練，並 email 一份俾你 📧。想重新點評／改咗再睇就撳下面。</div>
+      <div style="height:10px"></div>
+      <button class="act ghost" onclick="reviewWorkout()">🗣 導師團點評 + email 俾我</button>
+      <div id="reviewOut" style="margin-top:12px"><div class="muted">儲存今次訓練後，呢度會出點評，同時 email 俾你。</div></div>
     </div>
     <div class="card">
       <h2>📚 最近訓練（${workouts.length}）</h2>
@@ -788,6 +818,7 @@ async function saveWorkout(){
   const ws=load('is_workouts',[]); ws.push(w); save('is_workouts',ws);
   if(backendCfg().url){try{await backendPost('put',{key:'workouts',value:ws})}catch(e){}}
   go('log');
+  if(backendCfg().url) setTimeout(()=>{try{reviewWorkout()}catch(e){}},60);  // 打卡後自動叫導師團點評 + email
 }
 function renderWorkoutHistory(ws){
   if(!ws.length)return '<div class="muted">未有記錄</div>';
@@ -814,11 +845,29 @@ function buildReviewPrompt(w){
   return `請導師團點評我今日訓練：對比上次重量、顧住我嘅傷患、畀後續建議（下次重量/組數點調、下一課重點），可加 1 個英文 coaching cue（附中文）。\n\n`
     +`日期：${w.date}\n課節：${w.session}\nRPE：${w.rpe||'?'}　身體：${w.body||'正常'}\n動作：\n${lines||'—'}\n備註：${w.note||'無'}`;
 }
+function reviewSystem(){return (typeof chatContext==='function'?chatContext():'');}
 async function reviewWorkout(){
   const ws=load('is_workouts',[]); const w=ws[ws.length-1];
   const o=document.getElementById('reviewOut');
   if(!w){if(o)o.innerHTML='<div class="pill rest">未有訓練記錄 — 先儲存今次訓練</div>';return}
-  await copyToProject(buildReviewPrompt(w),'reviewOut');
+  const prompt=buildReviewPrompt(w);
+  if(!backendCfg().url){ await copyToProject(prompt,'reviewOut'); return; }   // 未設後端 → 複製去 claude.ai
+  if(o)o.innerHTML='<div class="muted">🗣 導師團點評緊… 會 email 一份俾你 📧</div>';
+  try{
+    const r=await backendPost('review',{prompt,system:reviewSystem(),subject:`🏋️ 導師團點評 · ${w.date} ${w.session}`});
+    if(r.ok&&r.reply){
+      save('is_lastreview',{date:w.date,session:w.session,text:r.reply});
+      if(o)o.innerHTML=`<div class="pill go" style="display:inline-block">✅ 已點評${r.emailed?' · 已 email 俾你 📧':''}</div>
+        <div class="msg" style="margin-top:10px;white-space:pre-wrap;line-height:1.65">${(r.reply||'').replace(/</g,'&lt;')}</div>
+        ${r.emailError?`<div class="hint">📧 email 未出：${r.emailError}（喺後端指令碼屬性加 OWNER_EMAIL）</div>`:''}`;
+    }else{
+      if(o)o.innerHTML=`<div class="muted" style="margin-bottom:8px">後端未有 AI key（${r.error||'?'}）→ 幫你複製，貼落 claude.ai 導師團 Project：</div>`;
+      await copyToProject(prompt,'reviewOut');
+    }
+  }catch(e){
+    if(o)o.innerHTML=`<div class="muted" style="margin-bottom:8px">❌ ${e.message} → 改用複製：</div>`;
+    await copyToProject(prompt,'reviewOut');
+  }
 }
 // ===== 共用：複製 prompt → 開 claude.ai Project（全 app 唔使後端 key）=====
 async function copyToProject(text,elId){
