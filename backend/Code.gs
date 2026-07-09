@@ -94,7 +94,13 @@ function doPost(e) {
     }
     if (b.action === 'review') {       // 導師團點評今次訓練 → 生成 + email 俾老闆
       const msgs = b.messages || [{ role: 'user', content: b.prompt || '' }];
-      const r = aiChat_(msgs, b.system || REVIEW_SYSTEM_, b.maxTokens || 2000);
+      let r = aiChat_(msgs, b.system || REVIEW_SYSTEM_, b.maxTokens || 3000);
+      // 防偶發 loop：正常點評 <5000 字，超過 12000 當退化，重試一次；仍過長就截斷
+      if (r.ok && r.reply && r.reply.length > 12000) {
+        const r2 = aiChat_(msgs, b.system || REVIEW_SYSTEM_, b.maxTokens || 3000);
+        if (r2.ok && r2.reply && r2.reply.length < r.reply.length) r = r2;
+        if (r.reply.length > 12000) r.reply = r.reply.slice(0, 6000) + '\n\n…（點評異常過長，已截斷；可喺 app 重新點評）';
+      }
       if (r.ok && r.reply && b.email !== false) {
         try { mailReview_(b.subject || '🏋️ 導師團點評', r.reply); r.emailed = true; }
         catch (e) { r.emailed = false; r.emailError = String(e); }
@@ -168,7 +174,8 @@ function geminiChat_(messages, system, maxTokens) {
       payload: JSON.stringify({
         system_instruction: { parts: [{ text: system || '你係一隊專業運動科學導師團，用繁體中文（香港）、精簡、可行動咁回答。' }] },
         contents: contents,
-        generationConfig: { maxOutputTokens: maxTokens || 1024, temperature: 0.7 }
+        // 2.5 系 model 有 thinking，會食晒輸出額度令正文截斷 → thinkingBudget:0 關閉思考
+        generationConfig: { maxOutputTokens: maxTokens || 1024, temperature: 0.7, thinkingConfig: { thinkingBudget: 0 } }
       })
     });
   const data = JSON.parse(res.getContentText());
